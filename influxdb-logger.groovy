@@ -24,7 +24,10 @@ definition(
     namespace: "nowhereville",
     author: "Joshua Marker (tooluser)",
     description: "Log SmartThings device states to InfluxDB",
-    category: "My Apps")
+    category: "My Apps",
+    iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
+    iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
+    iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png")
 
 preferences {
     section("General:") {
