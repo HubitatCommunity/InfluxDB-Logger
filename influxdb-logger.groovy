@@ -1,5 +1,8 @@
 /*****************************************************************************************************************
  *  Source: https://github.com/HubitatCommunity/InfluxDB-Logger
+ *
+ *  Raw Source: https://raw.githubusercontent.com/HubitatCommunity/InfluxDB-Logger/master/influxdb-logger.groovy
+ *
  *  Forked from: https://github.com/codersaur/SmartThings/tree/master/smartapps/influxdb-logger
  *  Original Author: David Lomas (codersaur)
  *  Hubitat Elevation version maintained by Joshua Marker (@tooluser)
@@ -18,6 +21,10 @@
  *   Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
  *   on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *   for the specific language governing permissions and limitations under the License.
+ *
+ *   Modifcation History
+ *   Date       Name		Change 
+ *   2019-02-02 Dan Ogorchock	Use asynchttpPost() instead of httpPost() call
  *****************************************************************************************************************/
 definition(
     name: "InfluxDB Logger",
@@ -51,7 +58,7 @@ preferences {
     }
 
     section ("InfluxDB Database:") {
-        input "prefDatabaseHost", "text", title: "Host", defaultValue: "192.168.0.100", required: true
+        input "prefDatabaseHost", "text", title: "Host", defaultValue: "192.168.1.100", required: true
         input "prefDatabasePort", "text", title: "Port", defaultValue: "8086", required: true
         input "prefDatabaseName", "text", title: "Database Name", defaultValue: "Hubitat", required: true
         input "prefDatabaseUser", "text", title: "Username", required: false
@@ -617,19 +624,20 @@ def postToInfluxDB(data) {
 	//	logger("postToInfluxDB(): Exception ${e} on ${hubAction}","error")
     //}
 
-    // For reference, code that could be used for WAN hosts:
-     def url = "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" 
-        try {
-          httpPost(url, data) { response ->
-              if (response.status != 999 ) {
-                  //log.debug "Response Status: ${response.status}"
-                 //log.debug "Response data: ${response.data}"
-                  //log.debug "Response contentType: ${response.contentType}"
-                }
-          }
-      } catch (e) {	
-          logger("postToInfluxDB(): Something went wrong when posting: ${e}","error")
-      }
+    // Hubitat Async http Post
+     
+	try {
+		def postParams = [
+			uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
+			requestContentType: 'application/json',
+			contentType: 'application/json',
+			body : data
+			]
+		asynchttpPost('handleInfluxResponse', postParams) 
+	} catch (e) {	
+		logger("postToInfluxDB(): Something went wrong when posting: ${e}","error")
+	}
+
 }
 
 /**
@@ -637,11 +645,10 @@ def postToInfluxDB(data) {
  *
  *  Handles response from post made in postToInfluxDB().
  **/
-//def handleInfluxResponse(physicalgraph.device.HubResponse hubResponse) {
-def handleInfluxResponse(hubitat.device.HubResponse hubResponse) {
-    //logger("hubresponse: $hubResponse", "info")
+def handleInfluxResponse(hubResponse, data) {
+    //logger("postToInfluxDB(): status of post call is: ${hubResponse.status}", "info")
     if(hubResponse.status >= 400) {
-		logger("postToInfluxDB(): Something went wrong! Response from InfluxDB: Headers: ${hubResponse.headers}, Body: ${hubResponse.body}","error")
+		logger("postToInfluxDB(): Something went wrong! Response from InfluxDB: Status: ${hubResponse.status}, Headers: ${hubResponse.headers}, Data: ${data}","error")
     }
 }
 
