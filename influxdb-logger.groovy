@@ -25,7 +25,7 @@
  *   Modifcation History
  *   Date       Name		Change 
  *   2019-02-02 Dan Ogorchock	Use asynchttpPost() instead of httpPost() call
- *   2019-12-09 Artem Tokmakov  Remove 'displayDuringSetup' input option which is not doing anything on Hubitat.
+ *   2019-09-12 Artem Tokmakov  Remove 'displayDuringSetup' input option which is not doing anything on Hubitat.
  *****************************************************************************************************************/
 definition(
     name: "InfluxDB Logger",
