@@ -25,6 +25,7 @@
  *   Modifcation History
  *   Date       Name		Change 
  *   2019-02-02 Dan Ogorchock	Use asynchttpPost() instead of httpPost() call
+ *   2019-12-09 Artem Tokmakov  Remove 'displayDuringSetup' input option which is not doing anything on Hubitat.
  *****************************************************************************************************************/
 definition(
     name: "InfluxDB Logger",
@@ -38,7 +39,7 @@ definition(
 
 preferences {
     section("General:") {
-        //input "prefDebugMode", "bool", title: "Enable debug logging?", defaultValue: true, displayDuringSetup: true
+        //input "prefDebugMode", "bool", title: "Enable debug logging?", defaultValue: true
         input (
         	name: "configLoggingLevelIDE",
         	title: "IDE Live Logging Level:\nMessages with this level and higher will be logged to the IDE.",
@@ -52,7 +53,6 @@ preferences {
         	    "5" : "Trace"
         	],
         	defaultValue: "3",
-            displayDuringSetup: true,
         	required: false
         )
     }
