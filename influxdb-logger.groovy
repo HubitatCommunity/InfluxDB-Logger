@@ -30,6 +30,7 @@ import groovy.transform.Field
 
 @Field static def sendQueue = []
 @Field static boolean asyncInProgress = false
+@Field static final asyncLock = new Object[0]
 @Field static TreeMap stats = [
     _totalSends: 0,
     _totalEvents: 0,
@@ -637,28 +638,9 @@ def logSystemProperties() {
  *
  *  Uses hubAction instead of httpPost() in case InfluxDB server is on the same LAN as the Smartthings Hub.
  **/
-def postToInfluxDB(data) {
-    logger("postToInfluxDB(): Posting data to InfluxDB: Host: ${state.databaseHost}, Port: ${state.databasePort}, Database: ${state.databaseName}, Data: [${data}]","info")
-    //logger("$state", "info")
-    //try {
-    //    //def hubAction = new physicalgraph.device.HubAction(
-    //    def hubAction = new hubitat.device.HubAction(
-    //    	[
-    //            method: "POST",
-    //            path: state.path,
-    //            body: data,
-    //            headers: state.headers
-    //        ],
-    //        null,
-    //        [ callback: handleInfluxResponse ]
-    //    )
-	//	
-    //    sendHubCommand(hubAction)
-    //    //logger("hubAction command sent", "info")
-    //}
-    //catch (Exception e) {
-	//	logger("postToInfluxDB(): Exception ${e} on ${hubAction}","error")
-    //}
+@groovy.transform.Synchronized("asyncLock")
+void postToInfluxDB(data) {
+    logger("postToInfluxDB(): Queuing data to InfluxDB: Data: [${data}]","info")
 
     // Hubitat Async http Post
     // Append time in ms, since the post will occur sime time in the future
@@ -666,7 +648,8 @@ def postToInfluxDB(data) {
 	runIn(1, postToInfluxDBNextFromQueue)
 }
 
-def postToInfluxDBNextFromQueue() {
+@groovy.transform.Synchronized("asyncLock")
+void postToInfluxDBNextFromQueue() {
 	if (sendQueue.size() == 0) return
 
 	if (asyncInProgress) return
@@ -697,7 +680,8 @@ def postToInfluxDBNextFromQueue() {
  *
  *  Handles response from post made in postToInfluxDB().
  **/
-def handleInfluxResponse(hubResponse, data) {
+@groovy.transform.Synchronized("asyncLock")
+void handleInfluxResponse(hubResponse, data) {
     //logger("postToInfluxDB(): status of post call is: ${hubResponse.status}", "info")
     if(hubResponse.status >= 400) {
 		def errData = hubResponse.getErrorData()
