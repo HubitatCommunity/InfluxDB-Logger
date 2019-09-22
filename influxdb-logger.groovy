@@ -26,6 +26,16 @@
  *   Date       Name		Change 
  *   2019-02-02 Dan Ogorchock	Use asynchttpPost() instead of httpPost() call
  *****************************************************************************************************************/
+import groovy.transform.Field
+
+@Field static def sendQueue = []
+@Field static boolean asyncInProgress = false
+@Field static TreeMap stats = [
+    _totalSends: 0,
+    _totalEvents: 0,
+    _sumQueueSize: 0,
+]
+
 definition(
     name: "InfluxDB Logger",
     namespace: "nowhereville",
@@ -37,6 +47,8 @@ definition(
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png")
 
 preferences {
+
+  page(name: "mainPage", title: "Settings Page", install: true, uninstall: true) {
     section("General:") {
         //input "prefDebugMode", "bool", title: "Enable debug logging?", defaultValue: true, displayDuringSetup: true
         input (
@@ -55,6 +67,13 @@ preferences {
             displayDuringSetup: true,
         	required: false
         )
+    }
+
+    section() {
+        href(name: "href",
+             title: "Statistics",
+             required: false,
+             page: "statsPage")
     }
 
     section ("InfluxDB Database:") {
@@ -118,8 +137,21 @@ preferences {
         input "windowShades", "capability.windowShade", title: "Window Shades", multiple: true, required: false
     }
 
-}
+  }
+  page(name: "statsPage", title: "Statistics") {
+    section("Events per Device") {
+        paragraph "Total Events: ${stats._totalEvents}"
+        paragraph "Total Sends: ${stats._totalSends}"
+        if (stats._totalSends > 0)
+            paragraph "Average Queue Size: ${stats._sumQueueSize / stats._totalSends}"
+        stats.each { deviceName, eventCount ->
+            if (deviceName.startsWith("_")) return
+            paragraph "$deviceName: $eventCount"
+        }
+    }
+  }
 
+}
 
 /*****************************************************************************************************************
  *  SmartThings System Commands:
@@ -274,7 +306,11 @@ def handleModeEvent(evt) {
 def handleEvent(evt) {
     //logger("handleEvent(): $evt.unit","info")
     logger("handleEvent(): $evt.displayName($evt.name:$evt.unit) $evt.value","info")
-    
+
+    if (!stats[evt.displayName]) stats[evt.displayName] = 0
+    stats[evt.displayName] += 1
+    stats._totalEvents += 1
+
     // Build data string to send to InfluxDB:
     //  Format: <measurement>[,<tag_name>=<tag_value>] field=<field_value>
     //    If value is an integer, it must have a trailing "i"
@@ -625,19 +661,35 @@ def postToInfluxDB(data) {
     //}
 
     // Hubitat Async http Post
-     
+    // Append time in ms, since the post will occur sime time in the future
+	sendQueue << data + " ${new Date().getTime()}"
+	runIn(1, postToInfluxDBNextFromQueue)
+}
+
+def postToInfluxDBNextFromQueue() {
+	if (sendQueue.size() == 0) return
+
+	if (asyncInProgress) return
+	asyncInProgress = true
+
+	stats._totalSends += 1
+	stats._sumQueueSize += sendQueue.size()
+
+	String data = sendQueue.join("\n")
+	sendQueue = []
+
 	try {
 		def postParams = [
-			uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
+			uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}&precision=ms" ,
 			requestContentType: 'application/json',
 			contentType: 'application/json',
 			body : data
 			]
-		asynchttpPost('handleInfluxResponse', postParams) 
+		asynchttpPost('handleInfluxResponse', postParams, [message: data])
 	} catch (e) {	
 		logger("postToInfluxDB(): Something went wrong when posting: ${e}","error")
+		asyncInProgress = false
 	}
-
 }
 
 /**
@@ -648,8 +700,16 @@ def postToInfluxDB(data) {
 def handleInfluxResponse(hubResponse, data) {
     //logger("postToInfluxDB(): status of post call is: ${hubResponse.status}", "info")
     if(hubResponse.status >= 400) {
-		logger("postToInfluxDB(): Something went wrong! Response from InfluxDB: Status: ${hubResponse.status}, Headers: ${hubResponse.headers}, Data: ${data}","error")
-    }
+		def errData = hubResponse.getErrorData()
+		def errMsg = hubResponse.getErrorMessage()
+		logger("handleInfluxResponse(): Something went wrong! Response from InfluxDB: Status: ${hubResponse.status}, Headers: ${hubResponse.headers}, DataError: ${errData} ${errMfg}","error")
+		logger("handleInfluxResponse(): Tried to send: ${data?.message}", "error")
+	}
+
+	asyncInProgress = false
+	if (sendQueue.size() > 0) {
+		runIn(1, postToInfluxDBNextFromQueue)
+	}
 }
 
 
