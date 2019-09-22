@@ -140,15 +140,22 @@ preferences {
 
   }
   page(name: "statsPage", title: "Statistics") {
-    section("Events per Device") {
-        paragraph "Total Events: ${stats._totalEvents}"
-        paragraph "Total Sends: ${stats._totalSends}"
-        if (stats._totalSends > 0)
-            paragraph "Average Queue Size: ${stats._sumQueueSize / stats._totalSends}"
+    section() {
+        def lines = ""
+        lines += "<b>Total Events:</b> ${stats._totalEvents}\n"
+        lines += "<b>Total Sends:</b> ${stats._totalSends}\n"
+        if (stats._totalSends > 0) {
+            lines += "<b>Max Queue Size:</b> ${stats._maxQueueSize}\n"
+            lines += "<b>Average Queue Size:</b> ${stats._sumQueueSize / stats._totalSends}\n"
+            lines += "<b>Max Send Time:</b> ${stats._maxSendTime}\n"
+            lines += "<b>Average Send Time:</b> ${stats._totalSendTime / stats._totalSends}\n"
+        }
+        lines += "<hr />"
         stats.each { deviceName, eventCount ->
             if (deviceName.startsWith("_")) return
-            paragraph "$deviceName: $eventCount"
+            lines += "<b>$deviceName:</b> $eventCount\n"
         }
+        paragraph lines
     }
   }
 
@@ -657,6 +664,7 @@ void postToInfluxDBNextFromQueue() {
 
 	stats._totalSends += 1
 	stats._sumQueueSize += sendQueue.size()
+	if (sendQueue.size() > stats._maxQueueSize) stats._maxQueueSize = sendQueue.size()
 
 	String data = sendQueue.join("\n")
 	sendQueue = []
@@ -668,7 +676,7 @@ void postToInfluxDBNextFromQueue() {
 			contentType: 'application/json',
 			body : data
 			]
-		asynchttpPost('handleInfluxResponse', postParams, [message: data])
+		asynchttpPost('handleInfluxResponse', postParams, [message: data, start_time: new Date().getTime()])
 	} catch (e) {	
 		logger("postToInfluxDB(): Something went wrong when posting: ${e}","error")
 		asyncInProgress = false
@@ -689,6 +697,10 @@ void handleInfluxResponse(hubResponse, data) {
 		logger("handleInfluxResponse(): Something went wrong! Response from InfluxDB: Status: ${hubResponse.status}, Headers: ${hubResponse.headers}, DataError: ${errData} ${errMfg}","error")
 		logger("handleInfluxResponse(): Tried to send: ${data?.message}", "error")
 	}
+
+	def delta = new Date().getTime() - data.start_time
+    stats._totalSendTime += delta
+    if (delta > stats._maxSendTime) stats._maxSendTime = delta
 
 	asyncInProgress = false
 	if (sendQueue.size() > 0) {
