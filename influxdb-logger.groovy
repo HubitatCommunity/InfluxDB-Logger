@@ -25,6 +25,7 @@
  *   Modifcation History
  *   Date       Name		Change 
  *   2019-02-02 Dan Ogorchock	Use asynchttpPost() instead of httpPost() call
+ *   2019-09-09 Caleb Morse     Support deferring writes and doing buld writes to influxdb
  *****************************************************************************************************************/
 definition(
     name: "InfluxDB Logger",
@@ -65,8 +66,11 @@ preferences {
         input "prefDatabasePass", "text", title: "Password", required: false
     }
     
-    section("Polling:") {
+    section("Polling / Write frequency:") {
         input "prefSoftPollingInterval", "number", title:"Soft-Polling interval (minutes)", defaultValue: 10, required: true
+
+        input "writeInterval", "enum", title:"How often to write to db (minutes)", defaultValue: "5", required: true,
+        	options: ["1",  "5", "10", "15"]
     }
     
     section("System Monitoring:") {
@@ -133,6 +137,10 @@ preferences {
 def installed() {
     state.installedAt = now()
     state.loggingLevelIDE = 5
+    // Needs to be synchronized in case another event happens at the same time
+    synchronized(this) {
+        state.queuedData = []
+    }
     log.debug "${app.label}: Installed with settings: ${settings}" 
 }
 
@@ -223,6 +231,7 @@ def updated() {
 
     // Configure Scheduling:
     state.softPollingInterval = settings.prefSoftPollingInterval.toInteger()
+    state.writeInterval = settings.writeInterval
     manageSchedules()
     
     // Configure Subscriptions:
@@ -256,7 +265,7 @@ def handleModeEvent(evt) {
     def locationName = escapeStringForInfluxDB(location.name)
     def mode = '"' + escapeStringForInfluxDB(evt.value) + '"'
 	def data = "_stMode,locationId=${locationId},locationName=${locationName} mode=${mode}"
-    postToInfluxDB(data)
+    queueToInfluxDb(data)
 }
 
 /**
@@ -482,9 +491,8 @@ def handleEvent(evt) {
     
     //logger("$data","info")
     
-    // Post data to InfluxDB:
-    postToInfluxDB(data)
-
+    // Queue data for later write to InfluxDB
+    queueToInfluxDb(data)
 }
 
 
@@ -555,7 +563,7 @@ def logSystemProperties() {
             def sst = '"' + times.sunset.format("HH:mm", location.timeZone) + '"'
 
             def data = "_heLocation,locationId=${locationId},locationName=${locationName},latitude=${location.latitude},longitude=${location.longitude},timeZone=${tz} mode=${mode},hubCount=${hubCount}i,sunriseTime=${srt},sunsetTime=${sst}"
-            postToInfluxDB(data)
+            queueToInfluxDb(data)
             //log.debug("LocationData = ${data}")
         } catch (e) {
 		    logger("logSystemProperties(): Unable to log Location properties: ${e}","error")
@@ -583,7 +591,7 @@ def logSystemProperties() {
                 // See fix here for null time returned: https://github.com/codersaur/SmartThings/pull/33/files
                 //data += "status=${hubStatus},batteryInUse=${batteryInUse},uptime=${hubUptime},zigbeePowerLevel=${zigbeePowerLevel},zwavePowerLevel=${zwavePowerLevel},firmwareVersion=${firmwareVersion}"
                 //data += "status=${hubStatus},batteryInUse=${batteryInUse},uptime=${hubLastBootUnixTS},zigbeePowerLevel=${zigbeePowerLevel},zwavePowerLevel=${zwavePowerLevel},firmwareVersion=${firmwareVersion}"
-                postToInfluxDB(data)
+                queueToInfluxDb(data)
                 //log.debug("HubData = ${data}")
             } catch (e) {
 				logger("logSystemProperties(): Unable to log Hub properties: ${e}","error")
@@ -591,7 +599,48 @@ def logSystemProperties() {
        	}
 
 	}
+}
 
+def queueToInfluxDb(data) {
+    // Add timestamp (influxdb does this automatically, but since we're batching writes, we need to add it
+    long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds
+    data += " ${timeNow}"
+    
+    int queueSize = 0
+    
+    synchronized(this) {
+        // This could happen if someone upgrades the app, but doesn't trigger the updated() call
+        if (state?.queuedData == null) {
+            state.queuedData = []
+        }
+        
+        state.queuedData.add(data)
+        
+        queueSize = state.queuedData.size()        
+    }
+    
+    if (queueSize > 100) {
+        log.info("Queue size is too big, triggering write now")
+        writeQueuedDataToInfluxDb()
+    }
+}
+
+def writeQueuedDataToInfluxDb() {
+    String writeData = ""
+    synchronized(this) {
+        if (state.queuedData.size() == 0) {
+            logger("No queued data to write to InfluxDB", "info")
+            return
+        }
+        
+        log.info("Writing queued data of size ${state.queuedData.size()} out")
+        
+        writeData = state.queuedData.join('\n')
+        
+        state.queuedData = []
+    }
+    
+    postToInfluxDB(writeData)
 }
 
 /**
@@ -670,9 +719,9 @@ private manageSchedules() {
     Random rand = new Random(now())
     def randomOffset = 0
     
-    // softPoll:
     try {
         unschedule(softPoll)
+        unschedule(writeInterval)
     }
     catch(e) {
         // logger("manageSchedules(): Unschedule failed!","error")
@@ -684,6 +733,12 @@ private manageSchedules() {
         schedule("${randomOffset} 0/${state.softPollingInterval} * * * ?", "softPoll")
     }
     
+    if (state.writeInterval == "1") {
+        runEvery1Minute(writeQueuedDataToInfluxDb)
+    }
+    else {
+        "runEvery${state.writeInterval}Minutes"(writeQueuedDataToInfluxDb)
+    }
 }
 
 /**
