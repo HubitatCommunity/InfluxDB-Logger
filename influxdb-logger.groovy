@@ -179,7 +179,7 @@ def updated() {
     state.path = "/write?db=${state.databaseName}"
     state.headers = [:] 
     state.headers.put("HOST", "${state.databaseHost}:${state.databasePort}")
-    //state.headers.put("Content-Type", "application/x-www-form-urlencoded")
+    state.headers.put("Content-Type", "application/x-www-form-urlencoded")
     if (state.databaseUser && state.databasePass) {
         state.headers.put("Authorization", encodeCredentialsBasic(state.databaseUser, state.databasePass))
     }
@@ -648,40 +648,20 @@ def writeQueuedDataToInfluxDb() {
  *
  *  Posts data to InfluxDB.
  *
- *  Uses hubAction instead of httpPost() in case InfluxDB server is on the same LAN as the Smartthings Hub.
  **/
 def postToInfluxDB(data) {
     logger("postToInfluxDB(): Posting data to InfluxDB: Host: ${state.databaseHost}, Port: ${state.databasePort}, Database: ${state.databaseName}, Data: [${data}]","info")
-    //logger("$state", "info")
-    //try {
-    //    //def hubAction = new physicalgraph.device.HubAction(
-    //    def hubAction = new hubitat.device.HubAction(
-    //    	[
-    //            method: "POST",
-    //            path: state.path,
-    //            body: data,
-    //            headers: state.headers
-    //        ],
-    //        null,
-    //        [ callback: handleInfluxResponse ]
-    //    )
-	//	
-    //    sendHubCommand(hubAction)
-    //    //logger("hubAction command sent", "info")
-    //}
-    //catch (Exception e) {
-	//	logger("postToInfluxDB(): Exception ${e} on ${hubAction}","error")
-    //}
-
-    // Hubitat Async http Post
      
 	try {
-		def postParams = [
-			uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
-			requestContentType: 'application/json',
-			contentType: 'application/json',
-			body : data
-			]
+        def postParams = [
+            uri : "http://${state.databaseHost}:${state.databasePort}",
+            path : "/write",
+            query : [ "db" : "${state.databaseName}" ],
+            requestContentType : 'application/json',
+            contentType : 'application/json',
+            headers : state.headers,
+            body : data
+        ]
 		asynchttpPost('handleInfluxResponse', postParams) 
 	} catch (e) {	
 		logger("postToInfluxDB(): Something went wrong when posting: ${e}","error")
@@ -812,8 +792,9 @@ private logger(msg, level = "debug") {
  *  Encode credentials for HTTP Basic authentication.
  **/
 private encodeCredentialsBasic(username, password) {
-	def rawString = "Basic " + "${username}:${password}"
-    return rawString.bytes.encodeBase64().toString()
+    def creds = "${username}:${password}"
+    creds = creds.bytes.encodeBase64().toString()
+    return "Basic ${creds}"
 }
 
 /**
