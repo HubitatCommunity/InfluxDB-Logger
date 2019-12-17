@@ -38,8 +38,17 @@ definition(
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png")
 
 preferences {
+    page(name: "setupMain", title: " ", install: true, uninstall: true) {
+
     section("General:") {
         //input "prefDebugMode", "bool", title: "Enable debug logging?", defaultValue: true, displayDuringSetup: true
+        
+        href(name: "href",
+                 title: "Connection Settings",
+                 description: prefDatabaseHost==null?"Configure database connection parameters":prefDatabaseHost,
+                 required: true,
+                 page: "connectionPage")
+        
         input (
         	name: "configLoggingLevelIDE",
         	title: "IDE Live Logging Level:\nMessages with this level and higher will be logged to the IDE.",
@@ -56,15 +65,9 @@ preferences {
             displayDuringSetup: true,
         	required: false
         )
+        
     }
 
-    section ("InfluxDB Database:") {
-        input "prefDatabaseHost", "text", title: "Host", defaultValue: "192.168.1.100", required: true
-        input "prefDatabasePort", "text", title: "Port", defaultValue: "8086", required: true
-        input "prefDatabaseName", "text", title: "Database Name", defaultValue: "Hubitat", required: true
-        input "prefDatabaseUser", "text", title: "Username", required: false
-        input "prefDatabasePass", "text", title: "Password", required: false
-    }
     
     section("Polling / Write frequency:") {
         input "prefSoftPollingInterval", "number", title:"Soft-Polling interval (minutes)", defaultValue: 10, required: true
@@ -121,7 +124,66 @@ preferences {
         input "waterSensors", "capability.waterSensor", title: "Water Sensors", multiple: true, required: false
         input "windowShades", "capability.windowShade", title: "Window Shades", multiple: true, required: false
     }
+    }
 
+    page(name: "connectionPage")
+
+
+}
+
+def connectionPage() {
+	dynamicPage(name: "connectionPage", title: "Connection Properties", install: false, uninstall: false) {
+        section {
+        
+            input "prefDatabaseHost", "text", title: "Host", defaultValue: "192.168.1.100", required: true
+            input "prefDatabaseTls", "bool", title:"Use TLS?", defaultValue: false, required: true
+
+            input "prefDatabasePort", "text", title: "Port", defaultValue: prefDatabaseTls?"443":"8086", required: false
+            input (
+        	    name: "prefInfluxVer",
+            	title: "Influx Version",
+            	type: "enum",
+            	options: [
+            	    "1" : "v1.x",
+        	    "2" : "v2.x"
+            	],
+            	defaultValue: "0",
+                displayDuringSetup: true,
+                submitOnChange: true,
+            	required: true
+            )
+            if (prefInfluxVer == "1") {
+                input "prefDatabaseName", "text", title: "Database Name", defaultValue: "Hubitat", required: true
+            }
+            if (prefInfluxVer == "2") {
+                input "prefOrg", "text", title: "Org", defaultValue: "", required: true
+                input "prefBucket", "text", title: "Bucket", defaultValue: "", required: true
+            }          
+            
+            input (
+        	    name: "prefAuthType",
+            	title: "Authorization Type",
+            	type: "enum",
+            	options: [
+            	    "none" : "None",
+        	        "basic" : "Username / Password",
+                    "token" : "Token"
+            	],
+            	defaultValue: "none",
+                displayDuringSetup: true,
+                submitOnChange: true,
+            	required: true
+            )
+            
+            if (prefAuthType == "basic") {
+                input "prefDatabaseUser", "text", title: "Username", required: false
+                input "prefDatabasePass", "text", title: "Password", required: false
+            }
+            if (prefAuthType == "token") {
+                input "prefDatabaseToken", "text", title: "Token", required: true
+            }
+        }
+    }
 }
 
 
@@ -677,9 +739,12 @@ def postToInfluxDB(data) {
      
 	try {
 		def postParams = [
-			uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
+			//uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
+            uri: "https://us-west-2-1.aws.cloud2.influxdata.com/api/v2/write?org=14454435aed29e74&bucket=451f17d6e82a6108" ,
+
 			requestContentType: 'application/json',
 			contentType: 'application/json',
+            headers: ['Authorization':'Token 0E-3aetBW71biLpga5Bg7r7PWGm-cboRv5tCUk13Isl8A-LOm1BJiBMvFvRyeLcoG_eCPxsAzZ0G4oQzNWIuNQ=='],
 			body : data
 			]
 		asynchttpPost('handleInfluxResponse', postParams) 
