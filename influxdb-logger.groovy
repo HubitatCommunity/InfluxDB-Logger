@@ -145,7 +145,7 @@ def connectionPage() {
             	type: "enum",
             	options: [
             	    "1" : "v1.x",
-        	    "2" : "v2.x"
+        	        "2" : "v2.x"
             	],
             	defaultValue: "0",
                 displayDuringSetup: true,
@@ -176,8 +176,8 @@ def connectionPage() {
             )
             
             if (prefAuthType == "basic") {
-                input "prefDatabaseUser", "text", title: "Username", required: false
-                input "prefDatabasePass", "text", title: "Password", required: false
+                input "prefDatabaseUser", "text", title: "Username", defaultValue: "", required: false
+                input "prefDatabasePass", "text", title: "Password", defaultValue: "", required: false
             }
             if (prefAuthType == "token") {
                 input "prefDatabaseToken", "text", title: "Token", required: true
@@ -233,17 +233,44 @@ def updated() {
     
     // Database config:
     state.databaseHost = settings.prefDatabaseHost
+    state.databaseTls = settings.prefDatabaseTls
     state.databasePort = settings.prefDatabasePort
+
+    state.influxVer = settings.prefInfluxVer   
     state.databaseName = settings.prefDatabaseName
-    state.databaseUser = settings.prefDatabaseUser
-    state.databasePass = settings.prefDatabasePass 
+    state.org = settings.prefOrg
+    state.bucket = settings.prefBucket
     
-    state.path = "/write?db=${state.databaseName}"
+    state.authType = settings.prefAuthType
+    state.databaseUser = settings.prefDatabaseUser
+    state.databasePass = settings.prefDatabasePass
+    state.databaseToken = settings.prefDatabaseToken
+
+    state.uri = "";
+    if (state.databaseTls) {
+        state.uri += "https://";
+    } else {
+        state.uri += "http://";
+    }
+    state.uri += state.databaseHost;
+    
+    if (state.databasePort != null) {
+        state.uri += ":"+state.databasePort;
+    }
+    
+    if (state?.influxVer == "1" || state?.influxVer == null) {
+        state.uri += "/write?db=${state.databaseName}"
+    } else if (state?.influxVer == "2") {
+        state.uri += "/api/v2/write?org=${state.org}&bucket=${state.bucket}"
+    }
+    
+    
     state.headers = [:] 
-    state.headers.put("HOST", "${state.databaseHost}:${state.databasePort}")
-    //state.headers.put("Content-Type", "application/x-www-form-urlencoded")
-    if (state.databaseUser && state.databasePass) {
+  
+    if (state.authType == "basic") {
         state.headers.put("Authorization", encodeCredentialsBasic(state.databaseUser, state.databasePass))
+    } else if (state.authType == "token") {
+        state.headers.put("Authorization", "Token ${state.databaseToken}")
     }
 
     // Build array of device collections and the attributes we want to report on for that collection:
@@ -713,38 +740,15 @@ def writeQueuedDataToInfluxDb() {
  *  Uses hubAction instead of httpPost() in case InfluxDB server is on the same LAN as the Smartthings Hub.
  **/
 def postToInfluxDB(data) {
-    logger("postToInfluxDB(): Posting data to InfluxDB: Host: ${state.databaseHost}, Port: ${state.databasePort}, Database: ${state.databaseName}, Data: [${data}]","info")
-    //logger("$state", "info")
-    //try {
-    //    //def hubAction = new physicalgraph.device.HubAction(
-    //    def hubAction = new hubitat.device.HubAction(
-    //    	[
-    //            method: "POST",
-    //            path: state.path,
-    //            body: data,
-    //            headers: state.headers
-    //        ],
-    //        null,
-    //        [ callback: handleInfluxResponse ]
-    //    )
-	//	
-    //    sendHubCommand(hubAction)
-    //    //logger("hubAction command sent", "info")
-    //}
-    //catch (Exception e) {
-	//	logger("postToInfluxDB(): Exception ${e} on ${hubAction}","error")
-    //}
+    logger("postToInfluxDB(): Posting data to InfluxDB: ${state.uri}, Data: [${data}]","info")    
 
-    // Hubitat Async http Post
-     
+    // Hubitat Async http Post     
 	try {
 		def postParams = [
-			//uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
-            uri: "https://us-west-2-1.aws.cloud2.influxdata.com/api/v2/write?org=14454435aed29e74&bucket=451f17d6e82a6108" ,
-
+            uri: state.uri,
 			requestContentType: 'application/json',
 			contentType: 'application/json',
-            headers: ['Authorization':'Token 0E-3aetBW71biLpga5Bg7r7PWGm-cboRv5tCUk13Isl8A-LOm1BJiBMvFvRyeLcoG_eCPxsAzZ0G4oQzNWIuNQ=='],
+            headers: state.headers,
 			body : data
 			]
 		asynchttpPost('handleInfluxResponse', postParams) 
