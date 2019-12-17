@@ -881,8 +881,9 @@ private logger(msg, level = "debug") {
  *  Encode credentials for HTTP Basic authentication.
  **/
 private encodeCredentialsBasic(username, password) {
-	def rawString = "Basic " + "${username}:${password}"
-    return rawString.bytes.encodeBase64().toString()
+    def creds = "${username}:${password}"
+    creds = creds.bytes.encodeBase64().toString()
+    return "Basic ${creds}"
 }
 
 /**
