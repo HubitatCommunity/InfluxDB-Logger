@@ -53,7 +53,6 @@ preferences {
         	    "5" : "Trace"
         	],
         	defaultValue: "3",
-            displayDuringSetup: true,
         	required: false
         )
     }
@@ -164,11 +163,11 @@ def uninstalled() {
  *  Refreshes scheduling and subscriptions.
  **/
 def updated() {
-    logger("updated()","trace")
-
     // Update internal state:
     state.loggingLevelIDE = (settings.configLoggingLevelIDE) ? settings.configLoggingLevelIDE.toInteger() : 3
-    
+
+    logger("updated()","trace")
+
     // Database config:
     state.databaseHost = settings.prefDatabaseHost
     state.databasePort = settings.prefDatabasePort
