@@ -280,10 +280,10 @@ def handleEvent(evt) {
     // tags:
     def deviceId = escapeStringForInfluxDB(evt.deviceId.toString())
     def deviceName = escapeStringForInfluxDB(evt.displayName)
-    def groupId = escapeStringForInfluxDB(evt?.device.device.groupId)
-    def groupName = escapeStringForInfluxDB(getGroupName(evt?.device.device.groupId))
-    def hubId = escapeStringForInfluxDB(evt?.device.device.hubId.toString())
-    def hubName = escapeStringForInfluxDB(evt?.device.device.hub.name.toString())
+    def groupId = null//escapeStringForInfluxDB(evt?.device.device.groupId)
+    def groupName = null//escapeStringForInfluxDB(getGroupName(evt?.device.device.groupId))
+    def hubId = null//escapeStringForInfluxDB(evt?.device.hubId.toString())
+    def hubName = escapeStringForInfluxDB(evt?.device.hub.name.toString())
     // Don't pull these from the evt.device as the app itself will be associated with one location.
     def locationId = escapeStringForInfluxDB(location.id.toString())
     def locationName = escapeStringForInfluxDB(location.name)
@@ -668,8 +668,9 @@ def postToInfluxDB(data) {
 			uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
 			requestContentType: 'application/json',
 			contentType: 'application/json',
-			body : data
-			]
+			body : data,
+            headers: state.headers
+        ]
 		asynchttpPost('handleInfluxResponse', postParams)
 	} catch (e) {
 		logger("postToInfluxDB(): Something went wrong when posting: ${e}","error")
