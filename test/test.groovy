@@ -2,8 +2,10 @@ package me.biocomp.hubitat_ci_example
 
 import me.biocomp.hubitat_ci.api.app_api.AppExecutor
 import me.biocomp.hubitat_ci.api.common_api.InstalledAppWrapper
+import me.biocomp.hubitat_ci.api.common_api.Location
 import me.biocomp.hubitat_ci.api.common_api.Log
 import me.biocomp.hubitat_ci.app.HubitatAppSandbox
+import me.biocomp.hubitat_ci.validation.Flags
 import spock.lang.Specification
 
 class Test extends
@@ -30,6 +32,7 @@ class Test extends
                 _*getLog() >> log
                 _*getState() >> state
                 _*getApp() >> app
+                _*getLocation() >> Mock(Location)
             }
 
             // Parse, construct script object, run validations
@@ -38,15 +41,13 @@ class Test extends
                     userSettingValues: [
                             prefSoftPollingInterval: "10",
                             prefDatabaseUser: "MyUserName",
-                            prefDatabasePass: "MyPassword"])
+                            prefDatabasePass: "MyPassword"],
+                    validationFlags: [Flags.AllowAnyExistingDeviceAttributeOrCapabilityInSubscribe])
 
-        when:
-            // Run installed() method on script object.
             script.installed()
             script.updated()
 
-        then:
-            // Expect that log.info() was called with this string
-            state.headers.Authorisation == "Basic = blah"
+        expect:
+            state.headers.Authorization == "Basic " + "MyUserName:MyPassword".bytes.encodeBase64().toString()
     }
 }
