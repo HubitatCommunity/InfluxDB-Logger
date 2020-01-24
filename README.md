@@ -1,6 +1,6 @@
 # InfluxDB-Logger
 
-![Build result](https://github.com/biocomp/InfluxDB-Logger/workflows/run_tests/badge.svg)
+![Build result](https://github.com/HubitatCommunity/InfluxDB-Logger/workflows/run_tests/badge.svg)
 
 Forked from: https://github.com/codersaur/SmartThings/tree/master/smartapps/influxdb-logger
 

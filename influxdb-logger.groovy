@@ -178,7 +178,6 @@ def updated() {
     state.path = "/write?db=${state.databaseName}"
     state.headers = [:]
     state.headers.put("HOST", "${state.databaseHost}:${state.databasePort}")
-    //state.headers.put("Content-Type", "application/x-www-form-urlencoded")
     if (state.databaseUser && state.databasePass) {
         state.headers.put("Authorization", encodeCredentialsBasic(state.databaseUser, state.databasePass))
     }
@@ -640,35 +639,16 @@ def writeQueuedDataToInfluxDb() {
  **/
 def postToInfluxDB(data) {
     logger("postToInfluxDB(): Posting data to InfluxDB: Host: ${state.databaseHost}, Port: ${state.databasePort}, Database: ${state.databaseName}, Data: [${data}]","info")
-    //logger("$state", "info")
-    //try {
-    //    //def hubAction = new physicalgraph.device.HubAction(
-    //    def hubAction = new hubitat.device.HubAction(
-    //    	[
-    //            method: "POST",
-    //            path: state.path,
-    //            body: data,
-    //            headers: state.headers
-    //        ],
-    //        null,
-    //        [ callback: handleInfluxResponse ]
-    //    )
-	//
-    //    sendHubCommand(hubAction)
-    //    //logger("hubAction command sent", "info")
-    //}
-    //catch (Exception e) {
-	//	logger("postToInfluxDB(): Exception ${e} on ${hubAction}","error")
-    //}
 
     // Hubitat Async http Post
-
 	try {
 		def postParams = [
-			uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
-			requestContentType: 'application/json',
-			contentType: 'application/json',
-			body : data,
+            uri : "http://${state.databaseHost}:${state.databasePort}",
+            requestContentType: 'application/json',
+            contentType: 'application/json',
+            path : "/write",
+            query : [ "db" : "${state.databaseName}" ],
+            body : data,
             headers: state.headers
         ]
 		asynchttpPost('handleInfluxResponse', postParams)
