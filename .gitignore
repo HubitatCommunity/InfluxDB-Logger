@@ -6,3 +6,5 @@ bin/
 .settings
 .classpath
 .project
+gradle/
+gradlew*

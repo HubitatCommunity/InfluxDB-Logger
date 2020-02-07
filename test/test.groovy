@@ -10,6 +10,7 @@ import me.biocomp.hubitat_ci.api.common_api.Log
 import me.biocomp.hubitat_ci.app.HubitatAppSandbox
 import me.biocomp.hubitat_ci.validation.Flags
 import spock.lang.Specification
+import spock.lang.Unroll
 
 class Test extends
         Specification
@@ -80,5 +81,23 @@ class Test extends
                 it.headers.Authorization == "Basic " + "MyUserName:MyPassword".bytes.encodeBase64().toString()
             })
             state.headers.Authorization == "Basic " + "MyUserName:MyPassword".bytes.encodeBase64().toString()
+    }
+
+    @Unroll
+    def "String '#src' should be escaped as '#res'"() {
+        expect:
+            // Parse, construct script object, run validations
+            res == sandbox.run(api: api).escapeStringForInfluxDB(src)
+
+        where:
+            src | res
+            ""  | "null"
+            null  | "null"
+            "a" | "a"
+            " " | "\\ "
+            "spaces  are escaped" | "spaces\\ \\ are\\ escaped"
+            "commas,,are,escaped" | "commas\\,\\,are\\,escaped"
+            "double\"\"quotes\"are\"escaped\"" | "double\\\"\\\"quotes\\\"are\\\"escaped\\\""
+            "==equal=sign=is==escaped" | "\\=\\=equal\\=sign\\=is\\=\\=escaped"
     }
 }

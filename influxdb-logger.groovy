@@ -39,7 +39,6 @@ definition(
 
 preferences {
     section("General:") {
-        //input "prefDebugMode", "bool", title: "Enable debug logging?", defaultValue: true, displayDuringSetup: true
         input (
         	name: "configLoggingLevelIDE",
         	title: "IDE Live Logging Level:\nMessages with this level and higher will be logged to the IDE.",
@@ -132,60 +131,19 @@ preferences {
  *  installed()
  *
  *  Runs when the app is first installed.
+ *  Builds state.deviceAttributes which describes the attributes that will be monitored for each device collection
+ *  (used by manageSubscriptions() and softPoll()).
  **/
 def installed() {
     state.installedAt = now()
-    state.loggingLevelIDE = 5
-    // Needs to be synchronized in case another event happens at the same time
-    synchronized(this) {
-        state.queuedData = []
-    }
+    state.loggingLevelIDE = new java.util.concurrent.atomic.AtomicInteger(5)
     log.debug "${app.label}: Installed with settings: ${settings}"
-}
 
-/**
- *  uninstalled()
- *
- *  Runs when the app is uninstalled.
- **/
-def uninstalled() {
-    logger("uninstalled()","trace")
-}
-
-/**
- *  updated()
- *
- *  Runs when app settings are changed.
- *
- *  Updates device.state with input values and other hard-coded values.
- *  Builds state.deviceAttributes which describes the attributes that will be monitored for each device collection
- *  (used by manageSubscriptions() and softPoll()).
- *  Refreshes scheduling and subscriptions.
- **/
-def updated() {
-    // Update internal state:
-    state.loggingLevelIDE = (settings.configLoggingLevelIDE) ? settings.configLoggingLevelIDE.toInteger() : 3
-
-    logger("updated()","trace")
-
-    // Database config:
-    state.databaseHost = settings.prefDatabaseHost
-    state.databasePort = settings.prefDatabasePort
-    state.databaseName = settings.prefDatabaseName
-    state.databaseUser = settings.prefDatabaseUser
-    state.databasePass = settings.prefDatabasePass
-
-    state.path = "/write?db=${state.databaseName}"
-    state.headers = [:]
-    state.headers.put("HOST", "${state.databaseHost}:${state.databasePort}")
-    //state.headers.put("Content-Type", "application/x-www-form-urlencoded")
-    if (state.databaseUser && state.databasePass) {
-        state.headers.put("Authorization", encodeCredentialsBasic(state.databaseUser, state.databasePass))
-    }
 
     // Build array of device collections and the attributes we want to report on for that collection:
     //  Note, the collection names are stored as strings. Adding references to the actual collection
     //  objects causes major issues (possibly memory issues?).
+    // This is thread-safe, no threads are touching state at this time.
     state.deviceAttributes = []
     state.deviceAttributes << [ devices: 'accelerometers', attributes: ['acceleration']]
     state.deviceAttributes << [ devices: 'alarms', attributes: ['alarm']]
@@ -214,8 +172,8 @@ def updated() {
     state.deviceAttributes << [ devices: 'sleepSensors', attributes: ['sleeping']]
     state.deviceAttributes << [ devices: 'smokeDetectors', attributes: ['smoke']]
     state.deviceAttributes << [ devices: 'soundSensors', attributes: ['sound']]
-	state.deviceAttributes << [ devices: 'spls', attributes: ['soundPressureLevel']]
-	state.deviceAttributes << [ devices: 'switches', attributes: ['switch']]
+    state.deviceAttributes << [ devices: 'spls', attributes: ['soundPressureLevel']]
+    state.deviceAttributes << [ devices: 'switches', attributes: ['switch']]
     state.deviceAttributes << [ devices: 'switchLevels', attributes: ['level']]
     state.deviceAttributes << [ devices: 'tamperAlerts', attributes: ['tamper']]
     state.deviceAttributes << [ devices: 'temperatures', attributes: ['temperature']]
@@ -228,9 +186,60 @@ def updated() {
     state.deviceAttributes << [ devices: 'waterSensors', attributes: ['water']]
     state.deviceAttributes << [ devices: 'windowShades', attributes: ['windowShade']]
 
+
+    state.path = new java.util.concurrent.atomic.AtomicReference<String>([:])
+    state.headers = new java.util.concurrent.atomic.AtomicReference<HashMap<String, String>>([:])
+
+
+    initialize()
+}
+
+/**
+ *  uninstalled()
+ *
+ *  Runs when the app is uninstalled.
+ **/
+def uninstalled() {
+    logger("uninstalled()","trace")
+}
+
+/**
+ *  updated()
+ *
+ *  Runs when app settings are changed.
+ *
+ *  Updates device.state with input values and other hard-coded values.
+ *  Refreshes scheduling and subscriptions.
+ **/
+def updated() {
+    initialize()
+}
+
+def initialize() {
+    unsubscribe()
+    unschedule()
+
+    // Update internal state:
+    state.loggingLevelIDE.set((settings.configLoggingLevelIDE) ? settings.configLoggingLevelIDE.toInteger() : 3)
+
+    logger("updated()", "trace")
+
+    state.path.set("/write?db=${settings.prefDatabaseName}")\
+
+    final def headers = [:] as HashMap<String, String>
+    headers.put("HOST", "${settings.prefDatabaseHost}:${settings.prefDatabasePort}")
+    //headers.put("Content-Type", "application/x-www-form-urlencoded")
+    if (settings.prefDatabaseUser && settings.prefDatabasePass) {
+        headers.put("Authorization", encodeCredentialsBasic(settings.prefDatabaseUser, settings.prefDatabasePass))
+    }
+
+    state.headers.set(headers)
+
+
     // Configure Scheduling:
-    state.softPollingInterval = settings.prefSoftPollingInterval.toInteger()
-    state.writeInterval = settings.writeInterval
+    state.softPollingInterval.set(settings.prefSoftPollingInterval.toInteger())
+    settings.writeInterval = settings.writeInterval
+
     manageSchedules()
 
     // Configure Subscriptions:
@@ -639,7 +648,7 @@ def writeQueuedDataToInfluxDb() {
  *  Uses hubAction instead of httpPost() in case InfluxDB server is on the same LAN as the Smartthings Hub.
  **/
 def postToInfluxDB(data) {
-    logger("postToInfluxDB(): Posting data to InfluxDB: Host: ${state.databaseHost}, Port: ${state.databasePort}, Database: ${state.databaseName}, Data: [${data}]","info")
+    logger("postToInfluxDB(): Posting data to InfluxDB: Host: ${settings.prefDatabaseHost}, Port: ${settings.prefDatabasePort}, Database: ${settings.prefDatabaseName}, Data: [${data}]","info")
     //logger("$state", "info")
     //try {
     //    //def hubAction = new physicalgraph.device.HubAction(
@@ -665,7 +674,7 @@ def postToInfluxDB(data) {
 
 	try {
 		def postParams = [
-			uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
+			uri: "http://${settings.prefDatabaseHost}:${settings.prefDatabasePort}/write?db=${settings.prefDatabaseName}" ,
 			requestContentType: 'application/json',
 			contentType: 'application/json',
 			body : data,
@@ -708,25 +717,18 @@ private manageSchedules() {
     Random rand = new Random(now())
     def randomOffset = 0
 
-    try {
-        unschedule(softPoll)
-        unschedule(writeInterval)
-    }
-    catch(e) {
-        // logger("manageSchedules(): Unschedule failed!","error")
-    }
-
-    if (state.softPollingInterval > 0) {
+    def pollingInterval = state.softPollingInterval.get()
+    if (pollingInterval > 0) {
         randomOffset = rand.nextInt(60)
-        logger("manageSchedules(): Scheduling softpoll to run every ${state.softPollingInterval} minutes (offset of ${randomOffset} seconds).","trace")
-        schedule("${randomOffset} 0/${state.softPollingInterval} * * * ?", "softPoll")
+        logger("manageSchedules(): Scheduling softpoll to run every ${pollingInterval} minutes (offset of ${randomOffset} seconds).","trace")
+        schedule("${randomOffset} 0/${pollingInterval} * * * ?", "softPoll")
     }
 
-    if (state.writeInterval == "1") {
+    if (settings.writeInterval == "1") {
         runEvery1Minute(writeQueuedDataToInfluxDb)
     }
     else {
-        "runEvery${state.writeInterval}Minutes"(writeQueuedDataToInfluxDb)
+        "runEvery${settings.writeInterval}Minutes"(writeQueuedDataToInfluxDb)
     }
 }
 
