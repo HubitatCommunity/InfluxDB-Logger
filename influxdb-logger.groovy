@@ -708,13 +708,13 @@ private manageSchedules() {
     Random rand = new Random(now())
     def randomOffset = 0
 
-    try {
+    //try {
         unschedule(softPoll)
-        unschedule(writeInterval)
-    }
-    catch(e) {
+        unschedule(writeQueuedDataToInfluxDb)
+    //}
+    //catch(e) {
         // logger("manageSchedules(): Unschedule failed!","error")
-    }
+    //}
 
     if (state.softPollingInterval > 0) {
         randomOffset = rand.nextInt(60)
@@ -748,7 +748,7 @@ private manageSubscriptions() {
     def devs // dynamic variable holding device collection.
     state.deviceAttributes.each { da ->
         devs = settings."${da.devices}"
-        if (devs && (da.attributes)) {
+            if (devs && (da.attributes)) {
             da.attributes.each { attr ->
                 logger("manageSubscriptions(): Subscribing to attribute: ${attr}, for devices: ${da.devices}","info")
                 // There is no need to check if all devices in the collection have the attribute.

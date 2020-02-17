@@ -23,5 +23,5 @@ repositories {
 dependencies {
     testCompile 'org.codehaus.groovy:groovy-all:2.5.4' // groovy itself
     testCompile "org.spockframework:spock-core:1.2-groovy-2.5" // spock framework
-    testCompile "me.biocomp.hubitat_ci:hubitat_ci:0.13" // hubitat_ci
+    testCompile "me.biocomp.hubitat_ci:hubitat_ci:0.14" // hubitat_ci
 }
