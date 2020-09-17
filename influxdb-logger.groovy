@@ -37,92 +37,183 @@ definition(
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png")
 
+	import groovy.transform.Field
+	@Field static java.util.concurrent.ConcurrentLinkedQueue loggerQueue = new java.util.concurrent.ConcurrentLinkedQueue()
+	@Field static java.util.concurrent.Semaphore mutex = new java.util.concurrent.Semaphore(1)
+
 preferences {
-    section("General:") {
-        //input "prefDebugMode", "bool", title: "Enable debug logging?", defaultValue: true, displayDuringSetup: true
-        input (
-        	name: "configLoggingLevelIDE",
-        	title: "IDE Live Logging Level:\nMessages with this level and higher will be logged to the IDE.",
-        	type: "enum",
-        	options: [
-        	    "0" : "None",
-        	    "1" : "Error",
-        	    "2" : "Warning",
-        	    "3" : "Info",
-        	    "4" : "Debug",
-        	    "5" : "Trace"
-        	],
-        	defaultValue: "3",
-            displayDuringSetup: true,
-        	required: false
-        )
-    }
-
-    section ("InfluxDB Database:") {
-        input "prefDatabaseHost", "text", title: "Host", defaultValue: "192.168.1.100", required: true
-        input "prefDatabasePort", "text", title: "Port", defaultValue: "8086", required: true
-        input "prefDatabaseName", "text", title: "Database Name", defaultValue: "Hubitat", required: true
-        input "prefDatabaseUser", "text", title: "Username", required: false
-        input "prefDatabasePass", "text", title: "Password", required: false
-    }
-    
-    section("Polling / Write frequency:") {
-        input "prefSoftPollingInterval", "number", title:"Soft-Polling interval (minutes)", defaultValue: 10, required: true
-
-        input "writeInterval", "enum", title:"How often to write to db (minutes)", defaultValue: "5", required: true,
-        	options: ["1",  "5", "10", "15"]
-    }
-    
-    section("System Monitoring:") {
-        input "prefLogModeEvents", "bool", title:"Log Mode Events?", defaultValue: true, required: true
-        input "prefLogHubProperties", "bool", title:"Log Hub Properties?", defaultValue: true, required: true
-        input "prefLogLocationProperties", "bool", title:"Log Location Properties?", defaultValue: true, required: true
-    }
-    
-    section("Devices To Monitor:") {
-        input "accelerometers", "capability.accelerationSensor", title: "Accelerometers", multiple: true, required: false
-        input "alarms", "capability.alarm", title: "Alarms", multiple: true, required: false
-        input "batteries", "capability.battery", title: "Batteries", multiple: true, required: false
-        input "beacons", "capability.beacon", title: "Beacons", multiple: true, required: false
-        input "buttons", "capability.button", title: "Buttons", multiple: true, required: false
-        input "cos", "capability.carbonMonoxideDetector", title: "Carbon Monoxide Detectors", multiple: true, required: false
-        input "co2s", "capability.carbonDioxideMeasurement", title: "Carbon Dioxide Detectors", multiple: true, required: false
-        input "colors", "capability.colorControl", title: "Color Controllers", multiple: true, required: false
-        input "consumables", "capability.consumable", title: "Consumables", multiple: true, required: false
-        input "contacts", "capability.contactSensor", title: "Contact Sensors", multiple: true, required: false
-        input "doorsControllers", "capability.doorControl", title: "Door Controllers", multiple: true, required: false
-        input "energyMeters", "capability.energyMeter", title: "Energy Meters", multiple: true, required: false
-        input "humidities", "capability.relativeHumidityMeasurement", title: "Humidity Meters", multiple: true, required: false
-        input "illuminances", "capability.illuminanceMeasurement", title: "Illuminance Meters", multiple: true, required: false
-        input "locks", "capability.lock", title: "Locks", multiple: true, required: false
-        input "motions", "capability.motionSensor", title: "Motion Sensors", multiple: true, required: false
-        input "musicPlayers", "capability.musicPlayer", title: "Music Players", multiple: true, required: false
-        input "peds", "capability.stepSensor", title: "Pedometers", multiple: true, required: false
-        input "phMeters", "capability.pHMeasurement", title: "pH Meters", multiple: true, required: false
-        input "powerMeters", "capability.powerMeter", title: "Power Meters", multiple: true, required: false
-        input "presences", "capability.presenceSensor", title: "Presence Sensors", multiple: true, required: false
-        input "pressures", "capability.sensor", title: "Pressure Sensors", multiple: true, required: false
-        input "shockSensors", "capability.shockSensor", title: "Shock Sensors", multiple: true, required: false
-        input "signalStrengthMeters", "capability.signalStrength", title: "Signal Strength Meters", multiple: true, required: false
-        input "sleepSensors", "capability.sleepSensor", title: "Sleep Sensors", multiple: true, required: false
-        input "smokeDetectors", "capability.smokeDetector", title: "Smoke Detectors", multiple: true, required: false
-        input "soundSensors", "capability.soundSensor", title: "Sound Sensors", multiple: true, required: false
-		input "spls", "capability.soundPressureLevel", title: "Sound Pressure Level Sensors", multiple: true, required: false
-		input "switches", "capability.switch", title: "Switches", multiple: true, required: false
-        input "switchLevels", "capability.switchLevel", title: "Switch Levels", multiple: true, required: false
-        input "tamperAlerts", "capability.tamperAlert", title: "Tamper Alerts", multiple: true, required: false
-        input "temperatures", "capability.temperatureMeasurement", title: "Temperature Sensors", multiple: true, required: false
-        input "thermostats", "capability.thermostat", title: "Thermostats", multiple: true, required: false
-        input "threeAxis", "capability.threeAxis", title: "Three-axis (Orientation) Sensors", multiple: true, required: false
-        input "touchs", "capability.touchSensor", title: "Touch Sensors", multiple: true, required: false
-        input "uvs", "capability.ultravioletIndex", title: "UV Sensors", multiple: true, required: false
-        input "valves", "capability.valve", title: "Valves", multiple: true, required: false
-        input "volts", "capability.voltageMeasurement", title: "Voltage Meters", multiple: true, required: false
-        input "waterSensors", "capability.waterSensor", title: "Water Sensors", multiple: true, required: false
-        input "windowShades", "capability.windowShade", title: "Window Shades", multiple: true, required: false
-    }
-
+      	page(name: "newPage")
 }
+
+
+def newPage() {
+    dynamicPage(name: "newPage", title: "New Settings Page", install: true, uninstall: true) {
+	    section("General:") {
+    	    //input "prefDebugMode", "bool", title: "Enable debug logging?", defaultValue: true, displayDuringSetup: true
+        	input (
+        		name: "configLoggingLevelIDE",
+        		title: "IDE Live Logging Level:\nMessages with this level and higher will be logged to the IDE.",
+        		type: "enum",
+        		options: [
+	        	    "0" : "None",
+    	    	    "1" : "Error",
+        		    "2" : "Warning",
+        		    "3" : "Info",
+        	    	"4" : "Debug",
+	        	    "5" : "Trace"
+    	    	],
+        		defaultValue: "3",
+            	displayDuringSetup: true,
+	        	required: false
+    	    )
+    	}
+
+    	section ("InfluxDB Database:") {
+	        input "prefDatabaseHost", "text", title: "Host", defaultValue: "192.168.1.100", required: true
+    	    input "prefDatabasePort", "text", title: "Port", defaultValue: "8086", required: true
+        	input "prefDatabaseName", "text", title: "Database Name", defaultValue: "Hubitat", required: true
+        	input "prefDatabaseUser", "text", title: "Username", required: false
+        	input "prefDatabasePass", "text", title: "Password", required: false
+    	}
+    
+  	section("Polling / Write frequency:") {
+	        input "prefSoftPollingInterval", "number", title:"Soft-Polling interval (minutes)", defaultValue: 10, required: true
+
+    	    input "writeInterval", "enum", title:"How often to write to db (minutes)", defaultValue: "5", required: true,
+        		options: ["1",  "2", "3", "4", "5", "10", "15"]
+    	}
+    
+	    section("System Monitoring:") {
+    	    input "prefLogModeEvents", "bool", title:"Log Mode Events?", defaultValue: true, required: true
+        	input "prefLogHubProperties", "bool", title:"Log Hub Properties?", defaultValue: true, required: true
+        	input "prefLogLocationProperties", "bool", title:"Log Location Properties?", defaultValue: true, required: true
+    	}
+    
+		section("Input Format Preference:") {
+			input "accessAllAttributes", "bool", title:"Get Access To All Attributes?", defaultValue: false, required: true, submitOnChange: true
+		}
+		
+		if(!accessAllAttributes)
+		{
+	       	section("Devices To Monitor:", hideable:true,hidden:true) {
+    	 	  	input "accelerometers", "capability.accelerationSensor", title: "Accelerometers", multiple: true, required: false
+       			input "alarms", "capability.alarm", title: "Alarms", multiple: true, required: false
+       			input "batteries", "capability.battery", title: "Batteries", multiple: true, required: false
+       			input "beacons", "capability.beacon", title: "Beacons", multiple: true, required: false
+	       		input "buttons", "capability.button", title: "Buttons", multiple: true, required: false
+    	  		input "cos", "capability.carbonMonoxideDetector", title: "Carbon Monoxide Detectors", multiple: true, required: false
+       			input "co2s", "capability.carbonDioxideMeasurement", title: "Carbon Dioxide Detectors", multiple: true, required: false
+        		input "colors", "capability.colorControl", title: "Color Controllers", multiple: true, required: false
+	        	input "consumables", "capability.consumable", title: "Consumables", multiple: true, required: false
+    	    	input "contacts", "capability.contactSensor", title: "Contact Sensors", multiple: true, required: false
+        		input "doorsControllers", "capability.doorControl", title: "Door Controllers", multiple: true, required: false
+        		input "energyMeters", "capability.energyMeter", title: "Energy Meters", multiple: true, required: false
+        		input "humidities", "capability.relativeHumidityMeasurement", title: "Humidity Meters", multiple: true, required: false
+	        	input "illuminances", "capability.illuminanceMeasurement", title: "Illuminance Meters", multiple: true, required: false
+    	    	input "locks", "capability.lock", title: "Locks", multiple: true, required: false
+        		input "motions", "capability.motionSensor", title: "Motion Sensors", multiple: true, required: false
+        		input "musicPlayers", "capability.musicPlayer", title: "Music Players", multiple: true, required: false
+	        	input "peds", "capability.stepSensor", title: "Pedometers", multiple: true, required: false
+    	    	input "phMeters", "capability.pHMeasurement", title: "pH Meters", multiple: true, required: false
+        		input "powerMeters", "capability.powerMeter", title: "Power Meters", multiple: true, required: false
+        		input "presences", "capability.presenceSensor", title: "Presence Sensors", multiple: true, required: false
+	        	input "pressures", "capability.sensor", title: "Pressure Sensors", multiple: true, required: false
+    	    	input "shockSensors", "capability.shockSensor", title: "Shock Sensors", multiple: true, required: false
+        		input "signalStrengthMeters", "capability.signalStrength", title: "Signal Strength Meters", multiple: true, required: false
+        		input "sleepSensors", "capability.sleepSensor", title: "Sleep Sensors", multiple: true, required: false
+	        	input "smokeDetectors", "capability.smokeDetector", title: "Smoke Detectors", multiple: true, required: false
+    	    	input "soundSensors", "capability.soundSensor", title: "Sound Sensors", multiple: true, required: false
+				input "spls", "capability.soundPressureLevel", title: "Sound Pressure Level Sensors", multiple: true, required: false
+				input "switches", "capability.switch", title: "Switches", multiple: true, required: false
+	        	input "switchLevels", "capability.switchLevel", title: "Switch Levels", multiple: true, required: false
+    	    	input "tamperAlerts", "capability.tamperAlert", title: "Tamper Alerts", multiple: true, required: false
+        		input "temperatures", "capability.temperatureMeasurement", title: "Temperature Sensors", multiple: true, required: false
+        		input "thermostats", "capability.thermostat", title: "Thermostats", multiple: true, required: false
+	        	input "threeAxis", "capability.threeAxis", title: "Three-axis (Orientation) Sensors", multiple: true, required: false
+    	    	input "touchs", "capability.touchSensor", title: "Touch Sensors", multiple: true, required: false
+        		input "uvs", "capability.ultravioletIndex", title: "UV Sensors", multiple: true, required: false
+        		input "valves", "capability.valve", title: "Valves", multiple: true, required: false
+	        	input "volts", "capability.voltageMeasurement", title: "Voltage Meters", multiple: true, required: false
+    	    	input "waterSensors", "capability.waterSensor", title: "Water Sensors", multiple: true, required: false
+        		input "windowShades", "capability.windowShade", title: "Window Shades", multiple: true, required: false
+    		}
+		} else {
+			section("Devices To Monitor:", hideable:true,hidden:true) {
+				input name: "allDevices", type: "capability.*", title: "Selected Devices", multiple: true, required: false, submitOnChange: true
+			}
+
+			section() {
+				state.deviceList = [:]
+				allDevices.each { device -> 
+					state.deviceList[device.id] = "${device.label ?: device.name}"
+				}
+			}
+		
+			section() {
+				state.selectedAttr=[:]
+				settings.allDevices.each { deviceName ->
+					if(deviceName) {
+						deviceId = deviceName.getId()
+        				attr = deviceName.getSupportedAttributes().unique()
+						if(attr) {
+							state.options =[]
+							index = 0
+							attr.each {at->
+								state.options[index] = "${at}"
+								index = index+1
+							}
+			
+							section("$deviceName", hideable: true) {
+								input name:"attrForDev$deviceId", type: "enum", title: "$deviceName", options: state.options, multiple: true, required: false, submitOnChange: true
+							}
+				
+							state.selectedAttr[deviceId] = settings["attrForDev"+deviceId]
+						}
+					}
+            	}
+			}
+			/*
+			section("allo") {
+				state.pollForAttr=[:]
+				section("$softPolling", hideable: true) {
+					state.selectedAttr.each { entry ->
+						deviceId = entry.key
+						state.temp=[]
+						index = 0
+						entry.value.each{ theAttr ->
+								input name:"pollForDev$deviceId$theAttr", type: "enum", title: "$theAttr", options: [0,1,2,3,4,5,10,15,20,30,45,90,120], multiple: true, required: false, submitOnChange: true
+						
+						}
+						
+						
+						log.debug "$deviceId - $theAttr"
+						log.debug "allo"
+						log.debug settings["pollForDev"+deviceId+theAttr]
+						state.temp[index] =  settings["pollForDev"+deviceId+theAttr]
+						index = index+1
+						log.debug state.temp
+						//state.pollForAttr[deviceId][theAttr] = settings["pollForDev"+deviceId+theAttr]
+
+					}
+				}
+			} */
+		}
+		
+	}
+}
+
+
+def getDeviceObj(id) {
+    def found
+    settings.allDevices.each { device -> 
+        if (device.getId() == id) {
+            //log.debug "Found at $device for $id with id: ${device.id}"
+            found = device
+        }
+    }
+    return found
+}
+
 
 
 /*****************************************************************************************************************
@@ -514,31 +605,50 @@ def softPoll() {
     logger("softPoll()","trace")
     
     logSystemProperties()
-    
-    // Iterate over each attribute for each device, in each device collection in deviceAttributes:
-    def devs // temp variable to hold device collection.
-    state.deviceAttributes.each { da ->
-        devs = settings."${da.devices}"
-        if (devs && (da.attributes)) {
-            devs.each { d ->
-                da.attributes.each { attr ->
-                    if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
-                        logger("softPoll(): Softpolling device ${d} for attribute: ${attr}","info")
-                        // Send fake event to handleEvent():
-                        handleEvent([
-                            name: attr, 
-                            value: d.latestState(attr)?.value,
-                            unit: d.latestState(attr)?.unit,
-                            device: d,
-                            deviceId: d.id,
-                            displayName: d.displayName
-                        ])
-                    }
-                }
-            }
-        }
-    }
+	if(!accessAllAttributes) {
+		// Iterate over each attribute for each device, in each device collection in deviceAttributes:
+    	def devs // temp variable to hold device collection.
+    	state.deviceAttributes.each { da ->
+	        devs = settings."${da.devices}"
+    	    if (devs && (da.attributes)) {
+        	    devs.each { d ->
+            	    da.attributes.each { attr ->
+                	    if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
+                    	    logger("softPoll(): Softpolling device ${d} for attribute: ${attr}","info")
+                        	// Send fake event to handleEvent():
 
+	                        handleEvent([
+    	                        name: attr, 
+        	                    value: d.latestState(attr)?.value,
+            	                unit: d.latestState(attr)?.unit,
+                	            device: d,
+                    	        deviceId: d.id,
+                        	    displayName: d.displayName
+                        	])
+						}
+					}
+				}
+			}
+		}
+	} else {
+		state.selectedAttr.each{ entry -> 
+			d = getDeviceObj(entry.key)
+			entry.value.each{ attr ->
+            	if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
+            		logger("softPoll(): Softpolling device ${d} for attribute: ${attr}","info")
+                	// Send fake event to handleEvent():
+                	handleEvent([
+	                	name: attr, 
+    	                value: d.latestState(attr)?.value,
+        	            unit: d.latestState(attr)?.unit,
+            	        device: d,
+                	    deviceId: d.id,
+                    	displayName: d.displayName
+                	])
+				}
+			}
+		}
+	}
 }
 
 /**
@@ -607,39 +717,59 @@ def queueToInfluxDb(data) {
     data += " ${timeNow}"
     
     int queueSize = 0
-    
-    synchronized(this) {
-        // This could happen if someone upgrades the app, but doesn't trigger the updated() call
-        if (state?.queuedData == null) {
-            state.queuedData = []
-        }
-        
-        state.queuedData.add(data)
-        
-        queueSize = state.queuedData.size()        
-    }
-    
+	try {
+		mutex.acquire()
+		//if(!mutex.tryAcquire()) {
+		//	logger("Error 1 in queueToInfluxDb","Warning")
+		//	mutex.release()
+		//}
+		
+		loggerQueue.offer(data)
+		queueSize = loggerQueue.size()
+		
+		// Give some visibility at the interface level
+		state.queuedData = loggerQueue.toArray()
+	} 
+	catch(e) {
+		logger("Error 2 in queueToInfluxDb","Warning")
+	} 
+	finally {
+		mutex.release()
+	}
+	
     if (queueSize > 100) {
-        log.info("Queue size is too big, triggering write now")
+        logger("Queue size is too big, triggering write now", "info")
         writeQueuedDataToInfluxDb()
     }
 }
 
 def writeQueuedDataToInfluxDb() {
     String writeData = ""
-    synchronized(this) {
-        if (state.queuedData.size() == 0) {
+	
+	try {
+		mutex.acquire()
+		//if(!mutex.tryAcquire()) {
+		//	logger("Error 1 in writeQueuedDataToInfluxDb","Warning")
+		//	mutex.release()
+		//}
+				
+		if(loggerQueue.size() == 0) {
             logger("No queued data to write to InfluxDB", "info")
             return
-        }
-        
-        log.info("Writing queued data of size ${state.queuedData.size()} out")
-        
-        writeData = state.queuedData.join('\n')
-        
-        state.queuedData = []
-    }
-    
+		}
+        logger("Writing queued data of size ${loggerQueue.size()} out", "info")
+		a = loggerQueue.toArray() 
+		writeData = a.join('\n')
+		loggerQueue.clear()
+		state.queuedData = []
+	}	   
+	catch(e) {
+		logger("Error 2 in writeQueuedDataToInfluxDb","Warning")
+	} 
+	finally {
+		mutex.release()
+	}
+	
     postToInfluxDB(writeData)
 }
 
@@ -721,24 +851,21 @@ private manageSchedules() {
     
     try {
         unschedule(softPoll)
-        unschedule(writeInterval)
+        unschedule(writeQueuedDataToInfluxDb)
     }
     catch(e) {
         // logger("manageSchedules(): Unschedule failed!","error")
     }
 
+    randomOffset = rand.nextInt(50)
     if (state.softPollingInterval > 0) {
-        randomOffset = rand.nextInt(60)
+        
         logger("manageSchedules(): Scheduling softpoll to run every ${state.softPollingInterval} minutes (offset of ${randomOffset} seconds).","trace")
         schedule("${randomOffset} 0/${state.softPollingInterval} * * * ?", "softPoll")
     }
     
-    if (state.writeInterval == "1") {
-        runEvery1Minute(writeQueuedDataToInfluxDb)
-    }
-    else {
-        "runEvery${state.writeInterval}Minutes"(writeQueuedDataToInfluxDb)
-    }
+    randomOffset = randomOffset+8
+    schedule("${randomOffset} 0/${state.writeInterval} * * * ?", "writeQueuedDataToInfluxDb")
 }
 
 /**
@@ -758,18 +885,28 @@ private manageSubscriptions() {
     // Subscribe to mode events:
     if (prefLogModeEvents) subscribe(location, "mode", handleModeEvent)
     
-    // Subscribe to device attributes (iterate over each attribute for each device collection in state.deviceAttributes):
-    def devs // dynamic variable holding device collection.
-    state.deviceAttributes.each { da ->
-        devs = settings."${da.devices}"
-        if (devs && (da.attributes)) {
-            da.attributes.each { attr ->
-                logger("manageSubscriptions(): Subscribing to attribute: ${attr}, for devices: ${da.devices}","info")
-                // There is no need to check if all devices in the collection have the attribute.
-                subscribe(devs, attr, handleEvent)
-            }
-        }
-    }
+	if(!accessAllAttributes) {
+    	// Subscribe to device attributes (iterate over each attribute for each device collection in state.deviceAttributes):
+    	def devs // dynamic variable holding device collection.
+    	state.deviceAttributes.each { da ->
+        	devs = settings."${da.devices}"
+        	if (devs && (da.attributes)) {
+            	da.attributes.each { attr ->
+                	logger("manageSubscriptions(): Subscribing to attribute: ${attr}, for devices: ${da.devices}","info")
+                	// There is no need to check if all devices in the collection have the attribute.
+                	subscribe(devs, attr, handleEvent)
+				}
+			}
+		}
+	} else {
+		state.selectedAttr.each{ entry -> 
+			d = getDeviceObj(entry.key)
+			entry.value.each{ attr ->
+				logger("manageSubscriptions(): Subscribing to attribute: ${attr}, for device: ${d}","info")
+				subscribe(d, attr, handleEvent)
+			}
+		}
+	}
 }
 
 /**
@@ -859,4 +996,4 @@ private getGroupName(id) {
     if (id == null) {return 'Home'}
     //else if (id == 'XXXXXXXXXXXXX') {return 'Group'}
     else {return 'Unknown'}    
-}
+} 
