@@ -964,7 +964,7 @@ private encodeCredentialsBasic(username, password) {
  *
  *  Further info: https://docs.influxdata.com/influxdb/v0.10/write_protocols/write_syntax/
  **/
-private escapeStringForInfluxDB(str) {
+private String escapeStringForInfluxDB(String str) {
     //logger("$str", "info")
     if (str) {
         str = str.replaceAll(" ", "\\\\ ") // Escape spaces.
