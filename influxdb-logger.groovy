@@ -379,23 +379,23 @@ def handleEvent(evt) {
     //  Format: <measurement>[,<tag_name>=<tag_value>] field=<field_value>
     //    If value is an integer, it must have a trailing "i"
     //    If value is a string, it must be enclosed in double quotes.
-    def measurement = evt.name
+    String measurement = evt.name
     // tags:
-    def deviceId = escapeStringForInfluxDB(evt.deviceId.toString())
-    def deviceName = escapeStringForInfluxDB(evt.displayName)
-    def groupId = escapeStringForInfluxDB(evt?.device.device.groupId)
-    def groupName = escapeStringForInfluxDB(getGroupName(evt?.device.device.groupId))
-    def hubId = escapeStringForInfluxDB(evt?.device.device.hubId.toString())
-    def hubName = escapeStringForInfluxDB(evt?.device.device.hub.name.toString())
+    String deviceId = evt?.deviceId?.toString()
+    String deviceName = escapeStringForInfluxDB(evt?.displayName)
+    String groupId = evt?.device?.device?.groupId?.toString()
+    String groupName = escapeStringForInfluxDB(getGroupName(evt?.device?.device?.groupId))
+    String hubId = evt?.device?.device?.hubId?.toString()
+    String hubName = escapeStringForInfluxDB(evt?.device?.device?.hub?.name?.toString())
     // Don't pull these from the evt.device as the app itself will be associated with one location.
-    def locationId = escapeStringForInfluxDB(location.id.toString())
-    def locationName = escapeStringForInfluxDB(location.name)
+    String locationId = location.id.toString()
+    String locationName = escapeStringForInfluxDB(location.name)
 
-    def unit = escapeStringForInfluxDB(evt.unit)
-    def value = escapeStringForInfluxDB(evt.value)
-    def valueBinary = ''
+    String unit = escapeStringForInfluxDB(evt.unit)
+    String value = escapeStringForInfluxDB(evt.value)
+    String valueBinary = ''
     
-    def data = "${measurement},deviceId=${deviceId},deviceName=${deviceName},groupId=${groupId},groupName=${groupName},hubId=${hubId},hubName=${hubName},locationId=${locationId},locationName=${locationName}"
+    String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName},groupId=${groupId},groupName=${groupName},hubId=${hubId},hubName=${hubName},locationId=${locationId},locationName=${locationName}"
     
     // Unit tag and fields depend on the event type:
     //  Most string-valued attributes can be translated to a binary value too.
