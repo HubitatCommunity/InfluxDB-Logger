@@ -75,8 +75,7 @@ def newPage() {
         	input "prefDatabaseUser", "text", title: "Username", required: false
         	input "prefDatabasePass", "text", title: "Password", required: false
             input "prefDatabaseTimeout", "number", title: "Timeout (seconds)", required: true, defaultValue: "30"
-            input "prefDatabaseSSL", "bool", title: "Use SSL (https) connection?", required: true, defaultValue: false
-            input "prefDatabaseTimestamps", "bool", title: "Include timestamps in database?", description: "If you disable this, then all data for a given batch will be written at the same time. This will be less valid data but may be required for some interfaces", required: true, defaultValue: false
+            input "prefDatabaseSSL", "bool", title: "Use SSL (https) connection?", required: true, defaultValue: false            
     	}
     
   	section("Polling / Write frequency:") {
@@ -271,7 +270,6 @@ def updated() {
     state.databasePass = settings.prefDatabasePass 
     state.databasetimeout = settings.prefDatabaseTimeout
     state.databaseSSL = settings.prefDatabaseSSL
-    state.databaseTimestamps = settings.prefDatabaseTimestamps
     
     state.path = "/write?db=${state.databaseName}"
     state.headers = [:] 
@@ -718,11 +716,9 @@ def logSystemProperties() {
 }
 
 def queueToInfluxDb(data) {
-    // Add timestamp (influxdb does this automatically, but since we're batching writes, we need to add it
-    if (state.databaseTimestamps) {
-        long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds
-        data += " ${timeNow}"
-    }
+    // Add timestamp (influxdb does this automatically, but since we're batching writes, we need to add it    
+    long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds
+    data += " ${timeNow}"
     
     int queueSize = 0
 	try {
