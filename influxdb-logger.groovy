@@ -74,6 +74,9 @@ def newPage() {
         	input "prefDatabaseName", "text", title: "Database Name", defaultValue: "Hubitat", required: true
         	input "prefDatabaseUser", "text", title: "Username", required: false
         	input "prefDatabasePass", "text", title: "Password", required: false
+            input "prefDatabaseTimeout", "number", title: "Timeout (seconds)", required: true, defaultValue: "30"
+            input "prefDatabaseSSL", "bool", title: "Use SSL (https) connection?", required: true, defaultValue: false
+            input "prefDatabaseTimestamps", "bool", title: "Include timestamps in database?", description: "If you disable this, then all data for a given batch will be written at the same time. This will be less valid data but may be required for some interfaces", required: true, defaultValue: false
     	}
     
   	section("Polling / Write frequency:") {
@@ -266,6 +269,9 @@ def updated() {
     state.databaseName = settings.prefDatabaseName
     state.databaseUser = settings.prefDatabaseUser
     state.databasePass = settings.prefDatabasePass 
+    state.databasetimeout = settings.prefDatabaseTimeout
+    state.databaseSSL = settings.prefDatabaseSSL
+    state.databaseTimestamps = settings.prefDatabaseTimestamps
     
     state.path = "/write?db=${state.databaseName}"
     state.headers = [:] 
@@ -713,8 +719,10 @@ def logSystemProperties() {
 
 def queueToInfluxDb(data) {
     // Add timestamp (influxdb does this automatically, but since we're batching writes, we need to add it
-    long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds
-    data += " ${timeNow}"
+    if (state.databaseTimestamps) {
+        long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds
+        data += " ${timeNow}"
+    }
     
     int queueSize = 0
 	try {
@@ -804,17 +812,34 @@ def postToInfluxDB(data) {
     //}
 
     // Hubitat Async http Post
-     
+    
+    logger("HEADERS: ${state.headers}","trace")
+                
+    def method = state.databaseSSL ? 'https' : 'http'
 	try {
 		def postParams = [
-			uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
+            uri: "${method}://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
+            headers: state.headers,
+            ignoreSSLIssues:  true,
 			requestContentType: 'application/json',
 			contentType: 'application/json',
-			body : data
+			body : data,
+            timeout: state.databaseTimeout
 			]
-		asynchttpPost('handleInfluxResponse', postParams) 
+        logger("PARAMS: ${postParams}","trace")
+        if (state.databaseSSL) {
+            // SSL does not work with Async!         
+            logger("Using httpPost due to SSL","trace")
+            httpPost(postParams) { response ->
+              handleInfluxResponse(response, null)
+            }   
+        } else {
+            logger("Using astynchttpPost - NO SSL","trace")
+            asynchttpPost('handleInfluxResponse', postParams) 
+        }		
 	} catch (e) {	
-		logger("postToInfluxDB(): Something went wrong when posting: ${e}","error")
+		logger("postToInfluxDB(): Something went wrong when posting: ${e}","error")        
+        logger("Message - ${e.getMessage()}","debug")
 	}
 
 }
@@ -825,7 +850,8 @@ def postToInfluxDB(data) {
  *  Handles response from post made in postToInfluxDB().
  **/
 def handleInfluxResponse(hubResponse, data) {
-    //logger("postToInfluxDB(): status of post call is: ${hubResponse.status}", "info")
+    logger("postToInfluxDB(): status of post call is: ${hubResponse.status}", "info")
+    // logger("${hubResponse}")
     if(hubResponse.status >= 400) {
 		logger("postToInfluxDB(): Something went wrong! Response from InfluxDB: Status: ${hubResponse.status}, Headers: ${hubResponse.headers}, Data: ${data}","error")
     }
@@ -949,8 +975,10 @@ private logger(msg, level = "debug") {
  *  Encode credentials for HTTP Basic authentication.
  **/
 private encodeCredentialsBasic(username, password) {
-	def rawString = "Basic " + "${username}:${password}"
-    return rawString.bytes.encodeBase64().toString()
+    	def pair ="$username:$password"
+        def basicAuth = pair.bytes.encodeBase64();    	
+        def rawString = "Basic " + basicAuth
+        return rawString
 }
 
 /**
@@ -996,4 +1024,4 @@ private getGroupName(id) {
     if (id == null) {return 'Home'}
     //else if (id == 'XXXXXXXXXXXXX') {return 'Group'}
     else {return 'Unknown'}    
-} 
+}
