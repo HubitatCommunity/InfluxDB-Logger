@@ -269,7 +269,7 @@ def updated() {
     
     state.path = "/write?db=${state.databaseName}"
     state.headers = [:] 
-    state.headers.put("HOST", "${state.databaseHost}:${state.databasePort}")
+    //state.headers.put("HOST", "${state.databaseHost}:${state.databasePort}")
     //state.headers.put("Content-Type", "application/x-www-form-urlencoded")
     if (state.databaseUser && state.databasePass) {
         state.headers.put("Authorization", encodeCredentialsBasic(state.databaseUser, state.databasePass))
@@ -810,6 +810,7 @@ def postToInfluxDB(data) {
 			uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
 			requestContentType: 'application/json',
 			contentType: 'application/json',
+			headers: state.headers,
 			body : data
 			]
 		asynchttpPost('handleInfluxResponse', postParams) 
@@ -949,8 +950,8 @@ private logger(msg, level = "debug") {
  *  Encode credentials for HTTP Basic authentication.
  **/
 private encodeCredentialsBasic(username, password) {
-	def rawString = "Basic " + "${username}:${password}"
-    return rawString.bytes.encodeBase64().toString()
+    def rawString = "${username}:${password}"
+    return "Basic " + rawString.bytes.encodeBase64().toString()
 }
 
 /**
@@ -997,3 +998,4 @@ private getGroupName(id) {
     //else if (id == 'XXXXXXXXXXXXX') {return 'Group'}
     else {return 'Unknown'}    
 } 
+
