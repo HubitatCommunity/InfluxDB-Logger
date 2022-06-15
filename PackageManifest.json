@@ -1,0 +1,18 @@
+{
+  "packageName": "InfluxDB-Logger",
+  "author": "Joshua Marker (tooluser)",
+  "version": "1.0",
+  "minimumHEVersion": "2.1.9",
+  "dateReleased": "2019-04-07",
+  "apps": [
+    {
+      "id": "119c9c44-e7af-46c0-bc44-dc4f6b175994",
+      "name": "InfluxDB Logger",
+      "namespace": "nowhereville",
+      "location": "https://raw.githubusercontent.com/HubitatCommunity/InfluxDB-Logger/master/influxdb-logger.groovy",
+      "required": true,
+      "oauth": false,
+      "primary": false
+    }
+  ]
+}
