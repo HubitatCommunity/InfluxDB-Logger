@@ -23,9 +23,10 @@
  *   for the specific language governing permissions and limitations under the License.
  *
  *   Modifcation History
- *   Date       Name		Change 
+ *   Date       Name		Change
  *   2019-02-02 Dan Ogorchock	Use asynchttpPost() instead of httpPost() call
  *   2019-09-09 Caleb Morse     Support deferring writes and doing buld writes to influxdb
+ *   2022-06-20 Denny Page      Remove nested sections for device selection
  *****************************************************************************************************************/
 definition(
     name: "InfluxDB Logger",
@@ -75,27 +76,27 @@ def newPage() {
         	input "prefDatabaseUser", "text", title: "Username", required: false
         	input "prefDatabasePass", "text", title: "Password", required: false
     	}
-    
-  	section("Polling / Write frequency:") {
+
+  	    section("Polling / Write frequency:") {
 	        input "prefSoftPollingInterval", "number", title:"Soft-Polling interval (minutes)", defaultValue: 10, required: true
 
     	    input "writeInterval", "enum", title:"How often to write to db (minutes)", defaultValue: "5", required: true,
         		options: ["1",  "2", "3", "4", "5", "10", "15"]
     	}
-    
+
 	    section("System Monitoring:") {
     	    input "prefLogModeEvents", "bool", title:"Log Mode Events?", defaultValue: true, required: true
         	input "prefLogHubProperties", "bool", title:"Log Hub Properties?", defaultValue: true, required: true
         	input "prefLogLocationProperties", "bool", title:"Log Location Properties?", defaultValue: true, required: true
     	}
-    
+
 		section("Input Format Preference:") {
 			input "accessAllAttributes", "bool", title:"Get Access To All Attributes?", defaultValue: false, required: true, submitOnChange: true
 		}
-		
+
 		if(!accessAllAttributes)
 		{
-	       	section("Devices To Monitor:", hideable:true,hidden:true) {
+	       	section("Devices To Monitor:", hideable:false,hidden:false) {
     	 	  	input "accelerometers", "capability.accelerationSensor", title: "Accelerometers", multiple: true, required: false
        			input "alarms", "capability.alarm", title: "Alarms", multiple: true, required: false
        			input "batteries", "capability.battery", title: "Batteries", multiple: true, required: false
@@ -138,40 +139,31 @@ def newPage() {
         		input "windowShades", "capability.windowShade", title: "Window Shades", multiple: true, required: false
     		}
 		} else {
-			section("Devices To Monitor:", hideable:true,hidden:true) {
+			section("Devices To Monitor:", hideable:false,hidden:false) {
 				input name: "allDevices", type: "capability.*", title: "Selected Devices", multiple: true, required: false, submitOnChange: true
 			}
 
-			section() {
-				state.deviceList = [:]
-				allDevices.each { device -> 
-					state.deviceList[device.id] = "${device.label ?: device.name}"
-				}
-			}
-		
-			section() {
-				state.selectedAttr=[:]
-				settings.allDevices.each { deviceName ->
-					if(deviceName) {
-						deviceId = deviceName.getId()
-        				attr = deviceName.getSupportedAttributes().unique()
-						if(attr) {
-							state.options =[]
-							index = 0
-							attr.each {at->
-								state.options[index] = "${at}"
-								index = index+1
-							}
-			
-							section("$deviceName", hideable: true) {
-								input name:"attrForDev$deviceId", type: "enum", title: "$deviceName", options: state.options, multiple: true, required: false, submitOnChange: true
-							}
-				
-							state.selectedAttr[deviceId] = settings["attrForDev"+deviceId]
+			state.selectedAttr=[:]
+			settings.allDevices.each { deviceName ->
+				if(deviceName) {
+					deviceId = deviceName.getId()
+       				attr = deviceName.getSupportedAttributes().unique()
+					if(attr) {
+						state.options =[]
+						index = 0
+						attr.each {at->
+							state.options[index] = "${at}"
+							index = index+1
 						}
+
+                        section("$deviceName", hideable: true) {
+								input name:"attrForDev$deviceId", type: "enum", title: "$deviceName", options: state.options, multiple: true, required: false, submitOnChange: true
+						}
+
+						state.selectedAttr[deviceId] = settings["attrForDev"+deviceId]
 					}
-            	}
-			}
+				}
+           	}
 			/*
 			section("allo") {
 				state.pollForAttr=[:]
@@ -205,7 +197,7 @@ def newPage() {
 
 def getDeviceObj(id) {
     def found
-    settings.allDevices.each { device -> 
+    settings.allDevices.each { device ->
         if (device.getId() == id) {
             //log.debug "Found at $device for $id with id: ${device.id}"
             found = device
@@ -232,7 +224,7 @@ def installed() {
     synchronized(this) {
         state.queuedData = []
     }
-    log.debug "${app.label}: Installed with settings: ${settings}" 
+    log.debug "${app.label}: Installed with settings: ${settings}"
 }
 
 /**
@@ -246,11 +238,11 @@ def uninstalled() {
 
 /**
  *  updated()
- * 
+ *
  *  Runs when app settings are changed.
- * 
+ *
  *  Updates device.state with input values and other hard-coded values.
- *  Builds state.deviceAttributes which describes the attributes that will be monitored for each device collection 
+ *  Builds state.deviceAttributes which describes the attributes that will be monitored for each device collection
  *  (used by manageSubscriptions() and softPoll()).
  *  Refreshes scheduling and subscriptions.
  **/
@@ -259,16 +251,16 @@ def updated() {
 
     // Update internal state:
     state.loggingLevelIDE = (settings.configLoggingLevelIDE) ? settings.configLoggingLevelIDE.toInteger() : 3
-    
+
     // Database config:
     state.databaseHost = settings.prefDatabaseHost
     state.databasePort = settings.prefDatabasePort
     state.databaseName = settings.prefDatabaseName
     state.databaseUser = settings.prefDatabaseUser
-    state.databasePass = settings.prefDatabasePass 
-    
+    state.databasePass = settings.prefDatabasePass
+
     state.path = "/write?db=${state.databaseName}"
-    state.headers = [:] 
+    state.headers = [:]
     //state.headers.put("HOST", "${state.databaseHost}:${state.databasePort}")
     //state.headers.put("Content-Type", "application/x-www-form-urlencoded")
     if (state.databaseUser && state.databasePass) {
@@ -276,7 +268,7 @@ def updated() {
     }
 
     // Build array of device collections and the attributes we want to report on for that collection:
-    //  Note, the collection names are stored as strings. Adding references to the actual collection 
+    //  Note, the collection names are stored as strings. Adding references to the actual collection
     //  objects causes major issues (possibly memory issues?).
     state.deviceAttributes = []
     state.deviceAttributes << [ devices: 'accelerometers', attributes: ['acceleration']]
@@ -306,8 +298,8 @@ def updated() {
     state.deviceAttributes << [ devices: 'sleepSensors', attributes: ['sleeping']]
     state.deviceAttributes << [ devices: 'smokeDetectors', attributes: ['smoke']]
     state.deviceAttributes << [ devices: 'soundSensors', attributes: ['sound']]
-	state.deviceAttributes << [ devices: 'spls', attributes: ['soundPressureLevel']]
-	state.deviceAttributes << [ devices: 'switches', attributes: ['switch']]
+    state.deviceAttributes << [ devices: 'spls', attributes: ['soundPressureLevel']]
+    state.deviceAttributes << [ devices: 'switches', attributes: ['switch']]
     state.deviceAttributes << [ devices: 'switchLevels', attributes: ['level']]
     state.deviceAttributes << [ devices: 'tamperAlerts', attributes: ['tamper']]
     state.deviceAttributes << [ devices: 'temperatures', attributes: ['temperature']]
@@ -324,7 +316,7 @@ def updated() {
     state.softPollingInterval = settings.prefSoftPollingInterval.toInteger()
     state.writeInterval = settings.writeInterval
     manageSchedules()
-    
+
     // Configure Subscriptions:
     manageSubscriptions()
 }
@@ -335,18 +327,18 @@ def updated() {
 
 /**
  *  handleAppTouch(evt)
- * 
+ *
  *  Used for testing.
  **/
 def handleAppTouch(evt) {
     logger("handleAppTouch()","trace")
-    
+
     softPoll()
 }
 
 /**
  *  handleModeEvent(evt)
- * 
+ *
  *  Log Mode changes.
  **/
 def handleModeEvent(evt) {
@@ -364,17 +356,17 @@ def handleModeEvent(evt) {
  *
  *  Builds data to send to InfluxDB.
  *   - Escapes and quotes string values.
- *   - Calculates logical binary values where string values can be 
+ *   - Calculates logical binary values where string values can be
  *     represented as binary values (e.g. contact: closed = 1, open = 0)
- * 
- *  Useful references: 
+ *
+ *  Useful references:
  *   - http://docs.smartthings.com/en/latest/capabilities-reference.html
  *   - https://docs.influxdata.com/influxdb/v0.10/guides/writing_data/
  **/
 def handleEvent(evt) {
     //logger("handleEvent(): $evt.unit","info")
     logger("handleEvent(): $evt.displayName($evt.name:$evt.unit) $evt.value","info")
-    
+
     // Build data string to send to InfluxDB:
     //  Format: <measurement>[,<tag_name>=<tag_value>] field=<field_value>
     //    If value is an integer, it must have a trailing "i"
@@ -394,9 +386,9 @@ def handleEvent(evt) {
     String unit = escapeStringForInfluxDB(evt.unit)
     String value = escapeStringForInfluxDB(evt.value)
     String valueBinary = ''
-    
+
     String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName},groupId=${groupId},groupName=${groupName},hubId=${hubId},hubName=${hubName},locationId=${locationId},locationName=${locationName}"
-    
+
     // Unit tag and fields depend on the event type:
     //  Most string-valued attributes can be translated to a binary value too.
     if ('acceleration' == evt.name) { // acceleration: Calculate a binary value (active = 1, inactive = 0)
@@ -579,9 +571,9 @@ def handleEvent(evt) {
     else {
         data += ",unit=${unit} value=${value}"
     }
-    
+
     //logger("$data","info")
-    
+
     // Queue data for later write to InfluxDB
     queueToInfluxDb(data)
 }
@@ -595,7 +587,7 @@ def handleEvent(evt) {
  *  softPoll()
  *
  *  Executed by schedule.
- * 
+ *
  *  Forces data to be posted to InfluxDB (even if an event has not been triggered).
  *  Doesn't poll devices, just builds a fake event to pass to handleEvent().
  *
@@ -603,7 +595,7 @@ def handleEvent(evt) {
  **/
 def softPoll() {
     logger("softPoll()","trace")
-    
+
     logSystemProperties()
 	if(!accessAllAttributes) {
 		// Iterate over each attribute for each device, in each device collection in deviceAttributes:
@@ -618,7 +610,7 @@ def softPoll() {
                         	// Send fake event to handleEvent():
 
 	                        handleEvent([
-    	                        name: attr, 
+    	                        name: attr,
         	                    value: d.latestState(attr)?.value,
             	                unit: d.latestState(attr)?.unit,
                 	            device: d,
@@ -631,14 +623,14 @@ def softPoll() {
 			}
 		}
 	} else {
-		state.selectedAttr.each{ entry -> 
+		state.selectedAttr.each{ entry ->
 			d = getDeviceObj(entry.key)
 			entry.value.each{ attr ->
             	if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
             		logger("softPoll(): Softpolling device ${d} for attribute: ${attr}","info")
                 	// Send fake event to handleEvent():
                 	handleEvent([
-	                	name: attr, 
+	                	name: attr,
     	                value: d.latestState(attr)?.value,
         	            unit: d.latestState(attr)?.unit,
             	        device: d,
@@ -695,7 +687,7 @@ def logSystemProperties() {
                 //def zigbeePowerLevel = h.hub.getDataValue("zigbeePowerLevel") + 'i'
                 //def zwavePowerLevel =  '"' + escapeStringForInfluxDB(h.hub.getDataValue("zwavePowerLevel")) + '"'
                 def firmwareVersion =  '"' + escapeStringForInfluxDB(h.firmwareVersionString) + '"'
-                
+
                 def data = "_heHub,locationId=${locationId},locationName=${locationName},hubId=${hubId},hubName=${hubName},hubIP=${hubIP} "
                 data += "firmwareVersion=${firmwareVersion}"
                 // See fix here for null time returned: https://github.com/codersaur/SmartThings/pull/33/files
@@ -715,7 +707,7 @@ def queueToInfluxDb(data) {
     // Add timestamp (influxdb does this automatically, but since we're batching writes, we need to add it
     long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds
     data += " ${timeNow}"
-    
+
     int queueSize = 0
 	try {
 		mutex.acquire()
@@ -729,10 +721,10 @@ def queueToInfluxDb(data) {
 		
 		// Give some visibility at the interface level
 		state.queuedData = loggerQueue.toArray()
-	} 
+	}
 	catch(e) {
 		logger("Error 2 in queueToInfluxDb","Warning")
-	} 
+	}
 	finally {
 		mutex.release()
 	}
@@ -758,14 +750,14 @@ def writeQueuedDataToInfluxDb() {
             return
 		}
         logger("Writing queued data of size ${loggerQueue.size()} out", "info")
-		a = loggerQueue.toArray() 
+		a = loggerQueue.toArray()
 		writeData = a.join('\n')
 		loggerQueue.clear()
 		state.queuedData = []
-	}	   
+	}	
 	catch(e) {
 		logger("Error 2 in writeQueuedDataToInfluxDb","Warning")
-	} 
+	}
 	finally {
 		mutex.release()
 	}
@@ -804,7 +796,7 @@ def postToInfluxDB(data) {
     //}
 
     // Hubitat Async http Post
-     
+
 	try {
 		def postParams = [
 			uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
@@ -813,7 +805,7 @@ def postToInfluxDB(data) {
 			headers: state.headers,
 			body : data
 			]
-		asynchttpPost('handleInfluxResponse', postParams) 
+		asynchttpPost('handleInfluxResponse', postParams)
 	} catch (e) {	
 		logger("postToInfluxDB(): Something went wrong when posting: ${e}","error")
 	}
@@ -839,8 +831,8 @@ def handleInfluxResponse(hubResponse, data) {
 
 /**
  *  manageSchedules()
- * 
- *  Configures/restarts scheduled tasks: 
+ *
+ *  Configures/restarts scheduled tasks:
  *   softPoll() - Run every {state.softPollingInterval} minutes.
  **/
 private manageSchedules() {
@@ -849,7 +841,7 @@ private manageSchedules() {
     // Generate a random offset (1-60):
     Random rand = new Random(now())
     def randomOffset = 0
-    
+
     try {
         unschedule(softPoll)
         unschedule(writeQueuedDataToInfluxDb)
@@ -860,18 +852,18 @@ private manageSchedules() {
 
     randomOffset = rand.nextInt(50)
     if (state.softPollingInterval > 0) {
-        
+
         logger("manageSchedules(): Scheduling softpoll to run every ${state.softPollingInterval} minutes (offset of ${randomOffset} seconds).","trace")
         schedule("${randomOffset} 0/${state.softPollingInterval} * * * ?", "softPoll")
     }
-    
+
     randomOffset = randomOffset+8
     schedule("${randomOffset} 0/${state.writeInterval} * * * ?", "writeQueuedDataToInfluxDb")
 }
 
 /**
  *  manageSubscriptions()
- * 
+ *
  *  Configures subscriptions.
  **/
 private manageSubscriptions() {
@@ -879,13 +871,13 @@ private manageSubscriptions() {
 
     // Unsubscribe:
     unsubscribe()
-    
+
     // Subscribe to App Touch events:
     subscribe(app,handleAppTouch)
-    
+
     // Subscribe to mode events:
     if (prefLogModeEvents) subscribe(location, "mode", handleModeEvent)
-    
+
 	if(!accessAllAttributes) {
     	// Subscribe to device attributes (iterate over each attribute for each device collection in state.deviceAttributes):
     	def devs // dynamic variable holding device collection.
@@ -900,7 +892,7 @@ private manageSubscriptions() {
 			}
 		}
 	} else {
-		state.selectedAttr.each{ entry -> 
+		state.selectedAttr.each{ entry ->
 			d = getDeviceObj(entry.key)
 			entry.value.each{ attr ->
 				logger("manageSubscriptions(): Subscribing to attribute: ${attr}, for device: ${d}","info")
@@ -958,9 +950,9 @@ private encodeCredentialsBasic(username, password) {
  *  escapeStringForInfluxDB()
  *
  *  Escape values to InfluxDB.
- *  
- *  If a tag key, tag value, or field key contains a space, comma, or an equals sign = it must 
- *  be escaped using the backslash character \. Backslash characters do not need to be escaped. 
+ *
+ *  If a tag key, tag value, or field key contains a space, comma, or an equals sign = it must
+ *  be escaped using the backslash character \. Backslash characters do not need to be escaped.
  *  Commas and spaces will also need to be escaped for measurements, though equals signs = do not.
  *
  *  Further info: https://docs.influxdata.com/influxdb/v0.10/write_protocols/write_syntax/
@@ -984,10 +976,10 @@ private String escapeStringForInfluxDB(String str) {
  *  getGroupName()
  *
  *  Get the name of a 'Group' (i.e. Room) from its ID.
- *  
+ *
  *  This is done manually as there does not appear to be a way to enumerate
  *  groups from a SmartApp currently.
- * 
+ *
  *  GroupIds can be obtained from the SmartThings IDE under 'My Locations'.
  *
  *  See: https://community.smartthings.com/t/accessing-group-within-a-smartapp/6830
@@ -996,6 +988,5 @@ private getGroupName(id) {
 
     if (id == null) {return 'Home'}
     //else if (id == 'XXXXXXXXXXXXX') {return 'Group'}
-    else {return 'Unknown'}    
-} 
-
+    else {return 'Unknown'}
+}
