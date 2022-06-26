@@ -31,7 +31,7 @@
  				done in one step
  *****************************************************************************************************************/
 definition(
-    name: "InfluxDB Logger 3",
+    name: "InfluxDB Logger",
     namespace: "nowhereville",
     author: "Joshua Marker (tooluser)",
     description: "Log SmartThings device states to InfluxDB",
