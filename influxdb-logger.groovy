@@ -164,31 +164,6 @@ def newPage() {
 					}
 				}
            	}
-			/*
-			section("allo") {
-				state.pollForAttr=[:]
-				section("$softPolling", hideable: true) {
-					state.selectedAttr.each { entry ->
-						deviceId = entry.key
-						state.temp=[]
-						index = 0
-						entry.value.each{ theAttr ->
-								input name:"pollForDev$deviceId$theAttr", type: "enum", title: "$theAttr", options: [0,1,2,3,4,5,10,15,20,30,45,90,120], multiple: true, required: false, submitOnChange: true
-						
-						}
-						
-						
-						log.debug "$deviceId - $theAttr"
-						log.debug "allo"
-						log.debug settings["pollForDev"+deviceId+theAttr]
-						state.temp[index] =  settings["pollForDev"+deviceId+theAttr]
-						index = index+1
-						log.debug state.temp
-						//state.pollForAttr[deviceId][theAttr] = settings["pollForDev"+deviceId+theAttr]
-
-					}
-				}
-			} */
 		}
 		
 	}
@@ -774,26 +749,6 @@ def writeQueuedDataToInfluxDb() {
  **/
 def postToInfluxDB(data) {
     logger("postToInfluxDB(): Posting data to InfluxDB: Host: ${state.databaseHost}, Port: ${state.databasePort}, Database: ${state.databaseName}, Data: [${data}]","info")
-    //logger("$state", "info")
-    //try {
-    //    //def hubAction = new physicalgraph.device.HubAction(
-    //    def hubAction = new hubitat.device.HubAction(
-    //    	[
-    //            method: "POST",
-    //            path: state.path,
-    //            body: data,
-    //            headers: state.headers
-    //        ],
-    //        null,
-    //        [ callback: handleInfluxResponse ]
-    //    )
-	//	
-    //    sendHubCommand(hubAction)
-    //    //logger("hubAction command sent", "info")
-    //}
-    //catch (Exception e) {
-	//	logger("postToInfluxDB(): Exception ${e} on ${hubAction}","error")
-    //}
 
     // Hubitat Async http Post
 
