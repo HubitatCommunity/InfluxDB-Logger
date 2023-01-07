@@ -27,8 +27,6 @@
  *   2019-02-02 Dan Ogorchock	Use asynchttpPost() instead of httpPost() call
  *   2019-09-09 Caleb Morse     Support deferring writes and doing buld writes to influxdb
  *   2022-06-20 Denny Page      Remove nested sections for device selection
- *   2022-06-26 Craig King	Added support for Influxdb2.x, Added initialization incase setup and install is 
- 				done in one step
  *****************************************************************************************************************/
 definition(
     name: "InfluxDB Logger",
@@ -45,24 +43,14 @@ definition(
 	@Field static java.util.concurrent.Semaphore mutex = new java.util.concurrent.Semaphore(1)
 
 preferences {
-      	page(name: "setupMain")
-        page(name: "connectionPage")
+      	page(name: "newPage")
 }
 
 
-def setupMain() {
-    dynamicPage(name: "setupMain", title: "New Settings Page", install: true, uninstall: true) {
+def newPage() {
+    dynamicPage(name: "newPage", title: "New Settings Page", install: true, uninstall: true) {
 	    section("General:") {
     	    //input "prefDebugMode", "bool", title: "Enable debug logging?", defaultValue: true, displayDuringSetup: true
-            
-            href(
-                name: "href",
-                title: "Connection Settings",
-                description: prefDatabaseHost==null?"Configure database connection parameters":prefDatabaseHost,
-                required: true,
-                page: "connectionPage"
-            )
-            
         	input (
         		name: "configLoggingLevelIDE",
         		title: "IDE Live Logging Level:\nMessages with this level and higher will be logged to the IDE.",
@@ -81,13 +69,13 @@ def setupMain() {
     	    )
     	}
 
-/*    	section ("InfluxDB Database:") {
+    	section ("InfluxDB Database:") {
 	        input "prefDatabaseHost", "text", title: "Host", defaultValue: "192.168.1.100", required: true
     	    input "prefDatabasePort", "text", title: "Port", defaultValue: "8086", required: true
         	input "prefDatabaseName", "text", title: "Database Name", defaultValue: "Hubitat", required: true
         	input "prefDatabaseUser", "text", title: "Username", required: false
         	input "prefDatabasePass", "text", title: "Password", required: false
-    	} */
+    	}
 
   	    section("Polling / Write frequency:") {
 	        input "prefSoftPollingInterval", "number", title:"Soft-Polling interval (minutes)", defaultValue: 10, required: true
@@ -176,61 +164,34 @@ def setupMain() {
 					}
 				}
            	}
+			/*
+			section("allo") {
+				state.pollForAttr=[:]
+				section("$softPolling", hideable: true) {
+					state.selectedAttr.each { entry ->
+						deviceId = entry.key
+						state.temp=[]
+						index = 0
+						entry.value.each{ theAttr ->
+								input name:"pollForDev$deviceId$theAttr", type: "enum", title: "$theAttr", options: [0,1,2,3,4,5,10,15,20,30,45,90,120], multiple: true, required: false, submitOnChange: true
+						
+						}
+						
+						
+						log.debug "$deviceId - $theAttr"
+						log.debug "allo"
+						log.debug settings["pollForDev"+deviceId+theAttr]
+						state.temp[index] =  settings["pollForDev"+deviceId+theAttr]
+						index = index+1
+						log.debug state.temp
+						//state.pollForAttr[deviceId][theAttr] = settings["pollForDev"+deviceId+theAttr]
 
+					}
+				}
+			} */
 		}
 		
 	}
-}
-
-def connectionPage() {
-	dynamicPage(name: "connectionPage", title: "Connection Properties", install: false, uninstall: false) {
-        section {
-        
-            input "prefDatabaseHost", "text", title: "Host", defaultValue: "192.168.1.100", required: true
-            input "prefDatabaseTls", "bool", title:"Use TLS?", defaultValue: false, required: true
-
-            input "prefDatabasePort", "text", title: "Port", defaultValue: prefDatabaseTls?"443":"8086", required: false
-            input (
-                name: "prefInfluxVer",
-                title: "Influx Version",
-                type: "enum",
-                options: [
-                    "1" : "v1.x",
-                    "2" : "v2.x"
-                ],
-                defaultValue: "1",
-                submitOnChange: true,
-                required: true
-            )
-            if (prefInfluxVer == "1") {
-                input "prefDatabaseName", "text", title: "Database Name", defaultValue: "Hubitat", required: true
-            } else if (prefInfluxVer == "2") {
-                input "prefOrg", "text", title: "Org", defaultValue: "", required: true
-                input "prefBucket", "text", title: "Bucket", defaultValue: "", required: true
-            }          
-            
-            input (
-                name: "prefAuthType",
-                title: "Authorization Type",
-                type: "enum",
-                options: [
-                    "none" : "None",
-                    "basic" : "Username / Password",
-                    "token" : "Token"
-                ],
-                defaultValue: "none",
-                submitOnChange: true,
-                required: true
-            )
-            
-            if (prefAuthType == "basic") {
-                input "prefDatabaseUser", "text", title: "Username", defaultValue: "", required: false
-                input "prefDatabasePass", "text", title: "Password", defaultValue: "", required: false
-            } else if (prefAuthType == "token") {
-                input "prefDatabaseToken", "text", title: "Token", required: true
-            }
-        }
-    }
 }
 
 
@@ -263,7 +224,6 @@ def installed() {
     synchronized(this) {
         state.queuedData = []
     }
-    initialize()
     log.debug "${app.label}: Installed with settings: ${settings}"
 }
 
@@ -286,55 +246,25 @@ def uninstalled() {
  *  (used by manageSubscriptions() and softPoll()).
  *  Refreshes scheduling and subscriptions.
  **/
-def updated(){
-        initialize()
-}
-
-def initialize() {
-    logger("Initialized()","trace")
+def updated() {
+    logger("updated()","trace")
 
     // Update internal state:
     state.loggingLevelIDE = (settings.configLoggingLevelIDE) ? settings.configLoggingLevelIDE.toInteger() : 3
 
     // Database config:
     state.databaseHost = settings.prefDatabaseHost
-    state.databaseTls = settings.prefDatabaseTls
     state.databasePort = settings.prefDatabasePort
-
-    state.influxVer = settings.prefInfluxVer   
     state.databaseName = settings.prefDatabaseName
-    state.org = settings.prefOrg
-    state.bucket = settings.prefBucket
-    
-    state.authType = settings.prefAuthType
     state.databaseUser = settings.prefDatabaseUser
     state.databasePass = settings.prefDatabasePass
-    state.databaseToken = settings.prefDatabaseToken
 
-    state.uri = "";
-    if (state.databaseTls) {
-        state.uri += "https://";
-    } else {
-        state.uri += "http://";
-    }
-    state.uri += state.databaseHost;
-    
-    if (state.databasePort != null) {
-        state.uri += ":"+state.databasePort;
-    }
-    
-    if (state?.influxVer == "1" || state?.influxVer == null) {
-        state.uri += "/write?db=${state.databaseName}"
-    } else if (state?.influxVer == "2") {
-        state.uri += "/api/v2/write?org=${state.org}&bucket=${state.bucket}"
-    }
-
-    state.headers = [:] 
-  
-    if (state.authType == "basic") {
+    state.path = "/write?db=${state.databaseName}"
+    state.headers = [:]
+    //state.headers.put("HOST", "${state.databaseHost}:${state.databasePort}")
+    //state.headers.put("Content-Type", "application/x-www-form-urlencoded")
+    if (state.databaseUser && state.databasePass) {
         state.headers.put("Authorization", encodeCredentialsBasic(state.databaseUser, state.databasePass))
-    } else if (state.authType == "token") {
-        state.headers.put("Authorization", "Token ${state.databaseToken}")
     }
 
     // Build array of device collections and the attributes we want to report on for that collection:
@@ -843,24 +773,44 @@ def writeQueuedDataToInfluxDb() {
  *  Uses hubAction instead of httpPost() in case InfluxDB server is on the same LAN as the Smartthings Hub.
  **/
 def postToInfluxDB(data) {
-    logger("postToInfluxDB(): Posting data to InfluxDB: ${state.uri}, Data: [${data}]","info")    
+    logger("postToInfluxDB(): Posting data to InfluxDB: Host: ${state.databaseHost}, Port: ${state.databasePort}, Database: ${state.databaseName}, Data: [${data}]","info")
+    //logger("$state", "info")
+    //try {
+    //    //def hubAction = new physicalgraph.device.HubAction(
+    //    def hubAction = new hubitat.device.HubAction(
+    //    	[
+    //            method: "POST",
+    //            path: state.path,
+    //            body: data,
+    //            headers: state.headers
+    //        ],
+    //        null,
+    //        [ callback: handleInfluxResponse ]
+    //    )
+	//	
+    //    sendHubCommand(hubAction)
+    //    //logger("hubAction command sent", "info")
+    //}
+    //catch (Exception e) {
+	//	logger("postToInfluxDB(): Exception ${e} on ${hubAction}","error")
+    //}
 
-    // Hubitat Async http Post     
+    // Hubitat Async http Post
+
 	try {
 		def postParams = [
-            uri: state.uri,
+			uri: "http://${state.databaseHost}:${state.databasePort}/write?db=${state.databaseName}" ,
 			requestContentType: 'application/json',
 			contentType: 'application/json',
-            headers: state.headers,
+			headers: state.headers,
 			body : data
 			]
-		asynchttpPost('handleInfluxResponse', postParams) 
+		asynchttpPost('handleInfluxResponse', postParams)
 	} catch (e) {	
 		logger("postToInfluxDB(): Something went wrong when posting: ${e}","error")
 	}
 
 }
-
 
 /**
  *  handleInfluxResponse()
@@ -992,9 +942,8 @@ private logger(msg, level = "debug") {
  *  Encode credentials for HTTP Basic authentication.
  **/
 private encodeCredentialsBasic(username, password) {
-    def creds = "${username}:${password}"
-    creds = creds.bytes.encodeBase64().toString()
-    return "Basic ${creds}"
+    def rawString = "${username}:${password}"
+    return "Basic " + rawString.bytes.encodeBase64().toString()
 }
 
 /**
