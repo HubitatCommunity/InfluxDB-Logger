@@ -861,7 +861,7 @@ private manageSubscriptions() {
  *  Wrapper function for all logging.
  **/
 private logger(msg, level = "debug") {
-    switch(level) {
+    switch (level) {
         case "error":
             if (state.loggingLevelIDE >= 1) log.error msg
             break
