@@ -28,6 +28,7 @@
  *   2019-02-02 Dan Ogorchock    Use asynchttpPost() instead of httpPost() call
  *   2019-09-09 Caleb Morse     Support deferring writes and doing buld writes to influxdb
  *   2022-06-20 Denny Page      Remove nested sections for device selection
+ *   2023-01-08 Denny Page      Address whitespace related lint issues. No functional changes.
  *****************************************************************************************************************/
 definition(
     name: "InfluxDB Logger",
