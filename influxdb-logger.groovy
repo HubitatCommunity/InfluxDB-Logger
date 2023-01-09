@@ -29,6 +29,7 @@
  *   2019-09-09 Caleb Morse     Support deferring writes and doing buld writes to influxdb
  *   2022-06-20 Denny Page      Remove nested sections for device selection
  *   2023-01-08 Denny Page      Address whitespace related lint issues. No functional changes.
+ *   2023-01-09 Craig		Added InfluxDb2.x support
  *****************************************************************************************************************/
 definition(
     name: "InfluxDB Logger",
