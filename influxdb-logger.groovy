@@ -50,7 +50,6 @@ preferences {
         page(name: "connectionPage")
 }
 
-
 def setupMain() {
     dynamicPage(name: "setupMain", title: "New Settings Page", install: true, uninstall: true) {
 	    section("General:") {
