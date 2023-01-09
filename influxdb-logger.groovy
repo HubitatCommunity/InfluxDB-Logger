@@ -209,11 +209,10 @@ def connectionPage() {
                 title: "Authorization Type",
                 type: "enum",
                 options: [
-                    "none" : "None",
                     "basic" : "Username / Password",
                     "token" : "Token"
                 ],
-                defaultValue: "none",
+                defaultValue: "basic",
                 submitOnChange: true,
                 required: true
             )
