@@ -200,6 +200,7 @@ def installed() {
     synchronized(this) {
         state.queuedData = []
     }
+    updated()
     log.debug "${app.label}: Installed with settings: ${settings}"
 }
 
