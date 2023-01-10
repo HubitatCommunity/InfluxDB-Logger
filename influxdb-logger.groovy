@@ -189,6 +189,7 @@ def connectionPage() {
             if (prefInfluxVer == "1") {
                 input "prefDatabaseName", "text", title: "Database Name", defaultValue: "Hubitat", required: true
             } else if (prefInfluxVer == "2") {
+                input "prefOrg", "text", title: "Org", defaultValue: "", required: true
                 input "prefBucket", "text", title: "Bucket", defaultValue: "", required: true
             }
             input (
