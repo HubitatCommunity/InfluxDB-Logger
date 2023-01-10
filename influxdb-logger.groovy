@@ -29,7 +29,7 @@
  *   2019-09-09 Caleb Morse     Support deferring writes and doing buld writes to influxdb
  *   2022-06-20 Denny Page      Remove nested sections for device selection
  *   2023-01-08 Denny Page      Address whitespace related lint issues. No functional changes.
- *   2023-01-09 Craig		Added InfluxDb2.x support
+ *   2023-01-09 Craig        Added InfluxDb2.x support
  *****************************************************************************************************************/
 definition(
     name: "InfluxDB Logger",
@@ -54,7 +54,7 @@ preferences {
 def setupMain() {
     dynamicPage(name: "setupMain", title: "New Settings Page", install: true, uninstall: true) {
         section("General:") {
-            //input "prefDebugMode", "bool", title: "Enable debug logging?", defaultValue: true, displayDuringSetup: true            
+            //input "prefDebugMode", "bool", title: "Enable debug logging?", defaultValue: true, displayDuringSetup: true
             href(
             name: "href",
             title: "Connection Settings",
@@ -62,7 +62,7 @@ def setupMain() {
             required: true,
             page: "connectionPage"
             )
-            
+
             input (
                 name: "configLoggingLevelIDE",
                 title: "IDE Live Logging Level:\nMessages with this level and higher will be logged to the IDE.",
@@ -225,8 +225,6 @@ def getDeviceObj(id) {
     return found
 }
 
-
-
 /*****************************************************************************************************************
  *  SmartThings System Commands:
  *****************************************************************************************************************/
@@ -285,19 +283,19 @@ def updated() {
         state.uri += "http://";
     }
     state.uri += settings.prefDatabaseHost;
-    
+
     if (settings.prefDatabasePort != null) {
         state.uri += ":"+settings.prefDatabasePort;
     }
-    
+
     if (settings?.prefInfluxVer == "1" || settings?.prefInfluxVer == null) {
         state.uri += "/write?db=${settings.prefDatabaseName}"
     } else if (settings?.prefInfluxVer == "2") {
         state.uri += "/api/v2/write?org=${settings.prefOrg}&bucket=${settings.prefBucket}"
     }
 
-    state.headers = [:] 
-  
+    state.headers = [:]
+
     if (state.authType == "basic") {
         state.headers.put("Authorization", encodeCredentialsBasic(state.databaseUser, state.databasePass))
     } else if (state.authType == "token") {
@@ -615,7 +613,6 @@ def handleEvent(evt) {
     queueToInfluxDb(data)
 }
 
-
 /*****************************************************************************************************************
  *  Main Commands:
  *****************************************************************************************************************/
@@ -809,7 +806,7 @@ def writeQueuedDataToInfluxDb() {
  *  Uses hubAction instead of httpPost() in case InfluxDB server is on the same LAN as the Smartthings Hub.
  **/
 def postToInfluxDB(data) {
-    logger("postToInfluxDB(): Posting data to InfluxDB: ${state.uri}, Data: [${data}]","info") 
+    logger("postToInfluxDB(): Posting data to InfluxDB: ${state.uri}, Data: [${data}]","info")
 
     // Hubitat Async http Post
 
@@ -838,7 +835,6 @@ def handleInfluxResponse(hubResponse, data) {
         logger("postToInfluxDB(): Something went wrong! Response from InfluxDB: Status: ${hubResponse.status}, Headers: ${hubResponse.headers}, Data: ${data}", "error")
     }
 }
-
 
 /*****************************************************************************************************************
  *  Private Helper Functions:
