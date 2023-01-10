@@ -273,36 +273,27 @@ def updated() {
     state.loggingLevelIDE = (settings.configLoggingLevelIDE) ? settings.configLoggingLevelIDE.toInteger() : 3
 
 // Database config:
-    state.databaseHost = settings.prefDatabaseHost
-    state.databaseTls = settings.prefDatabaseTls
-    state.databasePort = settings.prefDatabasePort
-
-    state.influxVer = settings.prefInfluxVer   
-    state.databaseName = settings.prefDatabaseName
-    state.org = settings.prefOrg
-    state.bucket = settings.prefBucket
-    
     state.authType = settings.prefAuthType
     state.databaseUser = settings.prefDatabaseUser
     state.databasePass = settings.prefDatabasePass
     state.databaseToken = settings.prefDatabaseToken
 
     state.uri = "";
-    if (state.databaseTls) {
+    if (settings.prefDatabaseTls) {
         state.uri += "https://";
     } else {
         state.uri += "http://";
     }
-    state.uri += state.databaseHost;
+    state.uri += settings.prefDatabaseHost;
     
-    if (state.databasePort != null) {
-        state.uri += ":"+state.databasePort;
+    if (settings.prefDatabasePort != null) {
+        state.uri += ":"+settings.prefDatabasePort;
     }
     
-    if (state?.influxVer == "1" || state?.influxVer == null) {
-        state.uri += "/write?db=${state.databaseName}"
-    } else if (state?.influxVer == "2") {
-        state.uri += "/api/v2/write?org=${state.org}&bucket=${state.bucket}"
+    if (settings?.prefInfluxVer == "1" || settings?.prefInfluxVer == null) {
+        state.uri += "/write?db=${settings.prefDatabaseName}"
+    } else if (settings?.prefInfluxVer == "2") {
+        state.uri += "/api/v2/write?org=${settings.prefOrg}&bucket=${settings.prefBucket}"
     }
 
     state.headers = [:] 
@@ -818,7 +809,7 @@ def writeQueuedDataToInfluxDb() {
  *  Uses hubAction instead of httpPost() in case InfluxDB server is on the same LAN as the Smartthings Hub.
  **/
 def postToInfluxDB(data) {
-    logger("postToInfluxDB(): Posting data to InfluxDB: Host: ${state.databaseHost}, Port: ${state.databasePort}, Database: ${state.databaseName}, Data: [${data}]", "info")
+    logger("postToInfluxDB(): Posting data to InfluxDB: ${state.uri}, Data: [${data}]","info") 
 
     // Hubitat Async http Post
 
