@@ -37,7 +37,7 @@ definition(
     name: "InfluxDB Logger",
     namespace: "nowhereville",
     author: "Joshua Marker (tooluser)",
-    description: "Log SmartThings device states to InfluxDB",
+    description: "Log device states to InfluxDB",
     category: "My Apps",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
@@ -841,10 +841,12 @@ private setupDB() {
         uri += "/write?db=${settings.prefDatabaseName}"
     }
 
-    if (settings.prefAuthType == "basic") {
-        def userpass = "${settings.prefDatabaseUser}:${settings.prefDatabasePass}"
-        headers.put("Authorization", "Basic " + userpass.bytes.encodeBase64().toString())
-    } else if (dbAuth == "token") {
+    if (settings.prefAuthType == null || settings.prefAuthType == "basic") {
+        if (settings.prefDatabaseUser && settings.prefDatabasePass) {
+            def userpass = "${settings.prefDatabaseUser}:${settings.prefDatabasePass}"
+            headers.put("Authorization", "Basic " + userpass.bytes.encodeBase64().toString())
+        }
+    } else if (settings.prefAuthType == "token") {
         headers.put("Authorization", "Token ${settings.prefDatabaseToken}")
     }
 
