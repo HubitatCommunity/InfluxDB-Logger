@@ -58,12 +58,12 @@ def setupMain() {
             href(
             name: "href",
             title: "Connection Settings",
-            description: prefDatabaseHost==null?"Configure database connection parameters":prefDatabaseHost,
+            description : prefDatabaseHost == null ? "Configure database connection parameters" : prefDatabaseHost,
             required: true,
             page: "connectionPage"
             )
 
-            input (
+            input(
                 name: "configLoggingLevelIDE",
                 title: "IDE Live Logging Level:\nMessages with this level and higher will be logged to the IDE.",
                 type: "enum",
@@ -98,7 +98,7 @@ def setupMain() {
             input "accessAllAttributes", "bool", title:"Get Access To All Attributes?", defaultValue: false, required: true, submitOnChange: true
         }
 
-        if(!accessAllAttributes) {
+        if (!accessAllAttributes) {
             section("Devices To Monitor:", hideable:false,hidden:false) {
                 input "accelerometers", "capability.accelerationSensor", title: "Accelerometers", multiple: true, required: false
                 input "alarms", "capability.alarm", title: "Alarms", multiple: true, required: false
@@ -145,22 +145,22 @@ def setupMain() {
             section("Devices To Monitor:", hideable:false,hidden:false) {
                 input name: "allDevices", type: "capability.*", title: "Selected Devices", multiple: true, required: false, submitOnChange: true
             }
-            state.selectedAttr=[:]
+            state.selectedAttr = [:]
             settings.allDevices.each { deviceName ->
-                if(deviceName) {
+                if (deviceName) {
                     deviceId = deviceName.getId()
                     attr = deviceName.getSupportedAttributes().unique()
-                    if(attr) {
-                        state.options =[]
+                    if (attr) {
+                        state.options = []
                         index = 0
-                        attr.each {at->
+                        attr.each { at->
                             state.options[index] = "${at}"
-                            index = index+1
+                            index = index + 1
                         }
                         section("$deviceName", hideable: true) {
                             input name:"attrForDev$deviceId", type: "enum", title: "$deviceName", options: state.options, multiple: true, required: false, submitOnChange: true
                         }
-                        state.selectedAttr[deviceId] = settings["attrForDev"+deviceId]
+                        state.selectedAttr[deviceId] = settings["attrForDev" + deviceId]
                     }
                 }
             }
@@ -173,8 +173,8 @@ def connectionPage() {
         section {
             input "prefDatabaseHost", "text", title: "Host", defaultValue: "192.168.1.100", required: true
             input "prefDatabaseTls", "bool", title:"Use TLS?", defaultValue: false, required: true
-            input "prefDatabasePort", "text", title: "Port", defaultValue: prefDatabaseTls?"443":"8086", required: false
-            input (
+            input "prefDatabasePort", "text", title: "Port", defaultValue : prefDatabaseTls ? "443" : "8086", required : false
+            input(
                 name: "prefInfluxVer",
                 title: "Influx Version",
                 type: "enum",
@@ -192,7 +192,7 @@ def connectionPage() {
                 input "prefOrg", "text", title: "Org", defaultValue: "", required: true
                 input "prefBucket", "text", title: "Bucket", defaultValue: "", required: true
             }
-            input (
+            input(
                 name: "prefAuthType",
                 title: "Authorization Type",
                 type: "enum",
@@ -279,14 +279,14 @@ def updated() {
 
     state.uri = "";
     if (settings.prefDatabaseTls) {
-        state.uri += "https://";
+        state.uri += "https://"
     } else {
-        state.uri += "http://";
+        state.uri += "http://"
     }
     state.uri += settings.prefDatabaseHost;
 
     if (settings.prefDatabasePort != null) {
-        state.uri += ":"+settings.prefDatabasePort;
+        state.uri += ":"+settings.prefDatabasePort
     }
 
     if (settings?.prefInfluxVer == "1" || settings?.prefInfluxVer == null) {
@@ -745,7 +745,7 @@ def queueToInfluxDb(data) {
     int queueSize = 0
     try {
         mutex.acquire()
-        //if(!mutex.tryAcquire()) {
+        //if (!mutex.tryAcquire()) {
         //    logger("Error 1 in queueToInfluxDb","Warning")
         //    mutex.release()
         //}
@@ -774,7 +774,7 @@ def writeQueuedDataToInfluxDb() {
 
     try {
         mutex.acquire()
-        //if(!mutex.tryAcquire()) {
+        //if (!mutex.tryAcquire()) {
         //    logger("Error 1 in writeQueuedDataToInfluxDb","Warning")
         //    mutex.release()
         //}
