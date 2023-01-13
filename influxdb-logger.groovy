@@ -89,7 +89,7 @@ def setupMain() {
             input "writeInterval", "enum", title:"How often to write to db (minutes)", defaultValue: "5", required: true,
                 options: ["1",  "2", "3", "4", "5", "10", "15"]
             
-            input "prefWriteIntervalQue", "number", title:"Write Interval Queue Size", defaultValue: 50, required: true
+            input "prefWriteQueueLimit", "number", title:"Write Interval Queue Size Limit", defaultValue: 50, required: true
         }
 
         section("System Monitoring:") {
@@ -733,13 +733,7 @@ def queueToInfluxDb(data) {
     finally {
         mutex.release()
     }
-    if (settings.prefWriteIntervalQue == null) {
-        if (queueSize > 100) {
-            logger("Queue size is too big, triggering write now", "info")
-            writeQueuedDataToInfluxDb()
-        }
-    }
-    else if (queueSize > settings.prefWriteIntervalQue) {
+    if (queueSize > (settings.prefWriteQueueLimit ?: 100)) {
         logger("Queue size is too big, triggering write now", "info")
         writeQueuedDataToInfluxDb()
     }
