@@ -10,7 +10,6 @@
       "name": "InfluxDB Logger",
       "namespace": "nowhereville",
       "location": "https://raw.githubusercontent.com/HubitatCommunity/InfluxDB-Logger/master/influxdb-logger.groovy",
-      "version": "2.0.0",
       "required": true,
       "oauth": false,
       "primary": false
