@@ -3,7 +3,8 @@
   "author": "Joshua Marker (tooluser)",
   "version": "2.0.0",
   "minimumHEVersion": "2.1.9",
-  "dateReleased": "2019-04-07",
+  "dateReleased": "2023-01-12",
+  "releaseNotes": "2.0.0 InfluxDB 2 support",
   "apps": [
     {
       "id": "119c9c44-e7af-46c0-bc44-dc4f6b175994",
