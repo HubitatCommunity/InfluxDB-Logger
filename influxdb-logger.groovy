@@ -88,6 +88,8 @@ def setupMain() {
 
             input "writeInterval", "enum", title:"How often to write to db (minutes)", defaultValue: "5", required: true,
                 options: ["1",  "2", "3", "4", "5", "10", "15"]
+            
+            input "prefWriteQueueLimit", "number", title:"Write Interval Queue Size Limit", defaultValue: 50, required: true
         }
 
         section("System Monitoring:") {
@@ -123,7 +125,7 @@ def setupMain() {
                 input "phMeters", "capability.pHMeasurement", title: "pH Meters", multiple: true, required: false
                 input "powerMeters", "capability.powerMeter", title: "Power Meters", multiple: true, required: false
                 input "presences", "capability.presenceSensor", title: "Presence Sensors", multiple: true, required: false
-                input "pressures", "capability.sensor", title: "Pressure Sensors", multiple: true, required: false
+                input "pressures", "capability.pressureMeasurement", title: "Pressure Sensors", multiple: true, required: false
                 input "shockSensors", "capability.shockSensor", title: "Shock Sensors", multiple: true, required: false
                 input "signalStrengthMeters", "capability.signalStrength", title: "Signal Strength Meters", multiple: true, required: false
                 input "sleepSensors", "capability.sleepSensor", title: "Sleep Sensors", multiple: true, required: false
@@ -731,8 +733,7 @@ def queueToInfluxDb(data) {
     finally {
         mutex.release()
     }
-
-    if (queueSize > 100) {
+    if (queueSize > (settings.prefWriteQueueLimit ?: 100)) {
         logger("Queue size is too big, triggering write now", "info")
         writeQueuedDataToInfluxDb()
     }
