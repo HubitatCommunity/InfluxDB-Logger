@@ -11,8 +11,6 @@
  *  Description: A SmartApp to log Hubitat device states to an InfluxDB database.
  *  See Codersaur's github repo for more information.
  *
- *  NOTE: Hubitat does not currently support group names.
- *
  *  License:
  *   Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *   in compliance with the License. You may obtain a copy of the License at:
@@ -27,10 +25,16 @@
  *   Date       Name            Change
  *   2019-02-02 Dan Ogorchock   Use asynchttpPost() instead of httpPost() call
  *   2019-09-09 Caleb Morse     Support deferring writes and doing buld writes to influxdb
- *   2022-06-20 Denny Page      Remove nested sections for device selection
+ *   2022-06-20 Denny Page      Remove nested sections for device selection.
  *   2023-01-08 Denny Page      Address whitespace related lint issues. No functional changes.
- *   2023-01-09 Craig           Added InfluxDb2.x support
- *   2023=01-12 Denny Page      Automatic migration of Influx 1.x settings
+ *   2023-01-09 Craig           Added InfluxDb2.x support.
+ *   2023=01-12 Denny Page      Automatic migration of Influx 1.x settings.
+ *   2023-01-15 Denny Page      Clean up various things:
+ *                              Remove Group ID/Name which are not supported on Hubitat.
+ *                              Remove Location ID and Hub ID which are not supported on Hubitat (always 1).
+ *                              Remove blocks of commented out code.
+ *                              Don't set page sections hidden to false where hideable is false.
+ *                              Remove state.queuedData.
  *****************************************************************************************************************/
 
 definition(
@@ -58,11 +62,11 @@ def setupMain() {
         section("General:") {
             //input "prefDebugMode", "bool", title: "Enable debug logging?", defaultValue: true, displayDuringSetup: true
             href(
-            name: "href",
-            title: "Connection Settings",
-            description : prefDatabaseHost == null ? "Configure database connection parameters" : prefDatabaseHost,
-            required: true,
-            page: "connectionPage"
+                name: "href",
+                title: "Connection Settings",
+                description : prefDatabaseHost == null ? "Configure database connection parameters" : prefDatabaseHost,
+                required: true,
+                page: "connectionPage"
             )
 
             input(
@@ -88,8 +92,8 @@ def setupMain() {
 
             input "writeInterval", "enum", title:"How often to write to db (minutes)", defaultValue: "5", required: true,
                 options: ["1",  "2", "3", "4", "5", "10", "15"]
-            
-            input "prefWriteQueueLimit", "number", title:"Write Interval Queue Size Limit", defaultValue: 50, required: true
+
+                input "prefWriteQueueLimit", "number", title:"Write Interval Queue Size Limit", defaultValue: 50, required: true
         }
 
         section("System Monitoring:") {
@@ -103,7 +107,7 @@ def setupMain() {
         }
 
         if (!accessAllAttributes) {
-            section("Devices To Monitor:", hideable:false, hidden:false) {
+            section("Devices To Monitor:", hideable:false) {
                 input "accelerometers", "capability.accelerationSensor", title: "Accelerometers", multiple: true, required: false
                 input "alarms", "capability.alarm", title: "Alarms", multiple: true, required: false
                 input "batteries", "capability.battery", title: "Batteries", multiple: true, required: false
@@ -146,7 +150,7 @@ def setupMain() {
                 input "windowShades", "capability.windowShade", title: "Window Shades", multiple: true, required: false
             }
         } else {
-            section("Devices To Monitor:", hideable:false, hidden:false) {
+            section("Devices To Monitor:", hideable:false) {
                 input name: "allDevices", type: "capability.*", title: "Selected Devices", multiple: true, required: false, submitOnChange: true
             }
             state.selectedAttr = [:]
@@ -238,10 +242,6 @@ def getDeviceObj(id) {
 def installed() {
     state.installedAt = now()
     state.loggingLevelIDE = 5
-    // Needs to be synchronized in case another event happens at the same time
-    synchronized(this) {
-        state.queuedData = []
-    }
     updated()
     log.debug "${app.label}: Installed with settings: ${settings}"
 }
@@ -326,22 +326,14 @@ def updated() {
 
     // Configure Subscriptions:
     manageSubscriptions()
+
+    // Clean up old state variables
+    state.remove("queuedData")
 }
 
 /*****************************************************************************************************************
  *  Event Handlers:
  *****************************************************************************************************************/
-
-/**
- *  handleAppTouch(evt)
- *
- *  Used for testing.
- **/
-def handleAppTouch(evt) {
-    logger("handleAppTouch()", "trace")
-
-    softPoll()
-}
 
 /**
  *  handleModeEvent(evt)
@@ -351,10 +343,9 @@ def handleAppTouch(evt) {
 def handleModeEvent(evt) {
     logger("handleModeEvent(): Mode changed to: ${evt.value}", "info")
 
-    def locationId = escapeStringForInfluxDB(location.id.toString())
     def locationName = escapeStringForInfluxDB(location.name)
     def mode = '"' + escapeStringForInfluxDB(evt.value) + '"'
-    def data = "_stMode,locationId=${locationId},locationName=${locationName} mode=${mode}"
+    def data = "_stMode,locationName=${locationName} mode=${mode}"
     queueToInfluxDb(data)
 }
 
@@ -365,10 +356,6 @@ def handleModeEvent(evt) {
  *   - Escapes and quotes string values.
  *   - Calculates logical binary values where string values can be
  *     represented as binary values (e.g. contact: closed = 1, open = 0)
- *
- *  Useful references:
- *   - http://docs.smartthings.com/en/latest/capabilities-reference.html
- *   - https://docs.influxdata.com/influxdb/v0.10/guides/writing_data/
  **/
 def handleEvent(evt) {
     //logger("handleEvent(): $evt.unit", "info")
@@ -382,19 +369,14 @@ def handleEvent(evt) {
     // tags:
     String deviceId = evt?.deviceId?.toString()
     String deviceName = escapeStringForInfluxDB(evt?.displayName)
-    String groupId = evt?.device?.device?.groupId?.toString()
-    String groupName = escapeStringForInfluxDB(getGroupName(evt?.device?.device?.groupId))
-    String hubId = evt?.device?.device?.hubId?.toString()
     String hubName = escapeStringForInfluxDB(evt?.device?.device?.hub?.name?.toString())
-    // Don't pull these from the evt.device as the app itself will be associated with one location.
-    String locationId = location.id.toString()
     String locationName = escapeStringForInfluxDB(location.name)
 
     String unit = escapeStringForInfluxDB(evt.unit)
     String value = escapeStringForInfluxDB(evt.value)
     String valueBinary = ''
 
-    String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName},groupId=${groupId},groupName=${groupName},hubId=${hubId},hubName=${hubName},locationId=${locationId},locationName=${locationName}"
+    String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName},hubName=${hubName},locationName=${locationName}"
 
     // Unit tag and fields depend on the event type:
     //  Most string-valued attributes can be translated to a binary value too.
@@ -579,9 +561,8 @@ def handleEvent(evt) {
         data += ",unit=${unit} value=${value}"
     }
 
-    //logger("$data", "info")
-
     // Queue data for later write to InfluxDB
+    //logger("$data", "info")
     queueToInfluxDb(data)
 }
 
@@ -657,7 +638,6 @@ def softPoll() {
 def logSystemProperties() {
     logger("logSystemProperties()", "trace")
 
-    def locationId = '"' + escapeStringForInfluxDB(location.id.toString()) + '"'
     def locationName = '"' + escapeStringForInfluxDB(location.name) + '"'
 
     // Location Properties:
@@ -665,14 +645,13 @@ def logSystemProperties() {
         try {
             def tz = '"' + escapeStringForInfluxDB(location.timeZone.ID.toString()) + '"'
             def mode = '"' + escapeStringForInfluxDB(location.mode) + '"'
-            def hubCount = location.hubs.size()
             def times = getSunriseAndSunset()
             def srt = '"' + times.sunrise.format("HH:mm", location.timeZone) + '"'
             def sst = '"' + times.sunset.format("HH:mm", location.timeZone) + '"'
 
-            def data = "_heLocation,locationId=${locationId},locationName=${locationName},latitude=${location.latitude},longitude=${location.longitude},timeZone=${tz} mode=${mode},hubCount=${hubCount}i,sunriseTime=${srt},sunsetTime=${sst}"
+            def data = "_heLocation,locationName=${locationName},latitude=${location.latitude},longitude=${location.longitude},timeZone=${tz} mode=${mode},sunriseTime=${srt},sunsetTime=${sst}"
             queueToInfluxDb(data)
-        //log.debug("LocationData = ${data}")
+            //log.debug("LocationData = ${data}")
         } catch (e) {
             logger("logSystemProperties(): Unable to log Location properties: ${e}", "error")
         }
@@ -682,25 +661,14 @@ def logSystemProperties() {
     if (prefLogHubProperties) {
         location.hubs.each { h ->
             try {
-                def hubId = '"' + escapeStringForInfluxDB(h.id.toString()) + '"'
                 def hubName = '"' + escapeStringForInfluxDB(h.name.toString()) + '"'
                 def hubIP = '"' + escapeStringForInfluxDB(h.localIP.toString()) + '"'
-                //def hubStatus = '"' + escapeStringForInfluxDB(h.status) + '"'
-                //def batteryInUse = ("false" == h.hub.getDataValue("batteryInUse")) ? "0i" : "1i"
-                // See fix here for null time returned: https://github.com/codersaur/SmartThings/pull/33/files
-                //def hubUptime = h.hub.getDataValue("uptime") + 'i'
-                //def hubLastBootUnixTS = h.hub.uptime + 'i'
-                //def zigbeePowerLevel = h.hub.getDataValue("zigbeePowerLevel") + 'i'
-                //def zwavePowerLevel =  '"' + escapeStringForInfluxDB(h.hub.getDataValue("zwavePowerLevel")) + '"'
                 def firmwareVersion =  '"' + escapeStringForInfluxDB(h.firmwareVersionString) + '"'
 
-                def data = "_heHub,locationId=${locationId},locationName=${locationName},hubId=${hubId},hubName=${hubName},hubIP=${hubIP} "
+                def data = "_heHub,locationName=${locationName},hubName=${hubName},hubIP=${hubIP} "
                 data += "firmwareVersion=${firmwareVersion}"
-                // See fix here for null time returned: https://github.com/codersaur/SmartThings/pull/33/files
-                //data += "status=${hubStatus},batteryInUse=${batteryInUse},uptime=${hubUptime},zigbeePowerLevel=${zigbeePowerLevel},zwavePowerLevel=${zwavePowerLevel},firmwareVersion=${firmwareVersion}"
-                //data += "status=${hubStatus},batteryInUse=${batteryInUse},uptime=${hubLastBootUnixTS},zigbeePowerLevel=${zigbeePowerLevel},zwavePowerLevel=${zwavePowerLevel},firmwareVersion=${firmwareVersion}"
+                //log.debug("HubData = ${data}")
                 queueToInfluxDb(data)
-            //log.debug("HubData = ${data}")
             } catch (e) {
                 logger("logSystemProperties(): Unable to log Hub properties: ${e}", "error")
             }
@@ -716,16 +684,9 @@ def queueToInfluxDb(data) {
     int queueSize = 0
     try {
         mutex.acquire()
-        //if (!mutex.tryAcquire()) {
-        //    logger("Error 1 in queueToInfluxDb", "Warning")
-        //    mutex.release()
-        //}
 
         loggerQueue.offer(data)
         queueSize = loggerQueue.size()
-
-        // Give some visibility at the interface level
-        state.queuedData = loggerQueue.toArray()
     }
     catch (e) {
         logger("Error 2 in queueToInfluxDb", "Warning")
@@ -733,6 +694,7 @@ def queueToInfluxDb(data) {
     finally {
         mutex.release()
     }
+
     if (queueSize > (settings.prefWriteQueueLimit ?: 100)) {
         logger("Queue size is too big, triggering write now", "info")
         writeQueuedDataToInfluxDb()
@@ -744,20 +706,14 @@ def writeQueuedDataToInfluxDb() {
 
     try {
         mutex.acquire()
-        //if (!mutex.tryAcquire()) {
-        //    logger("Error 1 in writeQueuedDataToInfluxDb", "Warning")
-        //    mutex.release()
-        //}
 
         if (loggerQueue.size() == 0) {
             logger("No queued data to write to InfluxDB", "info")
             return
         }
         logger("Writing queued data of size ${loggerQueue.size()} out", "info")
-        a = loggerQueue.toArray()
-        writeData = a.join('\n')
+        writeData = loggerQueue.toArray().join('\n')
         loggerQueue.clear()
-        state.queuedData = []
     }
     catch (e) {
         logger("Error 2 in writeQueuedDataToInfluxDb", "Warning")
@@ -862,6 +818,7 @@ private setupDB() {
     state.remove("databaseName")
     state.remove("databasePass")
     state.remove("databaseUser")
+    state.remove("path")
 }
 
 /**
@@ -905,9 +862,6 @@ private manageSubscriptions() {
 
     // Unsubscribe:
     unsubscribe()
-
-    // Subscribe to App Touch events:
-    subscribe(app, handleAppTouch)
 
     // Subscribe to mode events:
     if (prefLogModeEvents) subscribe(location, "mode", handleModeEvent)
@@ -987,29 +941,10 @@ private String escapeStringForInfluxDB(String str) {
         str = str.replaceAll(",", "\\\\,") // Escape commas.
         str = str.replaceAll("=", "\\\\=") // Escape equal signs.
         str = str.replaceAll("\"", "\\\\\"") // Escape double quotes.
-    //str = str.replaceAll("'", "_")  // Replace apostrophes with underscores.
+        //str = str.replaceAll("'", "_")  // Replace apostrophes with underscores.
     }
     else {
         str = 'null'
     }
     return str
-}
-
-/**
- *  getGroupName()
- *
- *  Get the name of a 'Group' (i.e. Room) from its ID.
- *
- *  This is done manually as there does not appear to be a way to enumerate
- *  groups from a SmartApp currently.
- *
- *  GroupIds can be obtained from the SmartThings IDE under 'My Locations'.
- *
- *  See: https://community.smartthings.com/t/accessing-group-within-a-smartapp/6830
- **/
-private getGroupName(id) {
-    if (id == null) { return 'Home' }
-    //else if (id == 'XXXXXXXXXXXXX') {return 'Group'}
-
-    return 'Unknown'
 }
