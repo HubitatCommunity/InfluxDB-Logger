@@ -1,10 +1,11 @@
 {
   "packageName": "InfluxDB-Logger",
   "author": "Joshua Marker (tooluser)",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "minimumHEVersion": "2.1.9",
-  "dateReleased": "2023-01-12",
-  "releaseNotes": "2.0.0 InfluxDB 2 support",
+  "dateReleased": "2023-01-18",
+  "releaseNotes": "2.1.0 cleanup of various SmartThings items\n2.0.0 InfluxDB 2 support",
+  "communityLink": "https://community.hubitat.com/t/influxdb-logger/110548",
   "apps": [
     {
       "id": "119c9c44-e7af-46c0-bc44-dc4f6b175994",
