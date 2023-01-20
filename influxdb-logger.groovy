@@ -85,6 +85,12 @@ def setupMain() {
                 displayDuringSetup: true,
                 required: false
             )
+
+        }
+
+        section("Change Application Name (optional)"){
+            input "nameOverride", "text", title: "New Name for Application", multiple: false, required: false, submitOnChange: true, defaultValue: app.getLabel()
+            if(nameOverride != app.getLabel) app.updateLabel(nameOverride)
         }
 
         section("Polling / Write frequency:") {
