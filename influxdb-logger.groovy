@@ -550,6 +550,12 @@ def handleEvent(evt) {
         valueBinary = ('closed' == evt.value) ? '1i' : '0i'
         data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
     }
+    else if ('valve' == evt.name) { // switch: Calculate a binary value (open = 1, closed = 0)
+        unit = 'valve'
+        value = '"' + value + '"'
+        valueBinary = ('open' == evt.value) ? '1i' : '0i'
+        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
+    }
     // Catch any other event with a string value that hasn't been handled:
     else if (evt.value ==~ /.*[^0-9\.,-].*/) { // match if any characters are not digits, period, comma, or hyphen.
         logger("handleEvent(): Found a string value that's not explicitly handled: Device Name: ${deviceName}, Event Name: ${evt.name}, Value: ${evt.value}", "warn")
