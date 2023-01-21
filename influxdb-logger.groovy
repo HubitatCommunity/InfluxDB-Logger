@@ -48,9 +48,8 @@ definition(
     iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png")
 
     import groovy.transform.Field
-
-    @Field static java.util.concurrent.ConcurrentLinkedQueue loggerQueue = new java.util.concurrent.ConcurrentLinkedQueue()
-    @Field static java.util.concurrent.Semaphore mutex = new java.util.concurrent.Semaphore(1)
+    @Field static Map loggerQueueMap = [:]
+    @Field static Map mutexMap = [:]
 
 preferences {
     page(name: "setupMain")
@@ -248,6 +247,7 @@ def getDeviceObj(id) {
 def installed() {
     state.installedAt = now()
     state.loggingLevelIDE = 5
+    getLoggerQueue()
     updated()
     log.debug "${app.label}: Installed with settings: ${settings}"
 }
@@ -682,23 +682,55 @@ def logSystemProperties() {
     }
 }
 
+def getMutex() {
+    java.util.concurrent.Semaphore mutexInstance = mutexMap[app.getId()]
+    if (!mutexInstance) {
+        mutexInstance = new java.util.concurrent.Semaphore(1)
+        mutexMap[app.getId()] = mutexInstance
+    }
+    return mutexInstance
+}
+
+def getLoggerQueue() {
+    java.util.concurrent.ConcurrentLinkedQueue loggerQueueInstance = loggerQueueMap[app.getId()]
+    if (!loggerQueueInstance) {
+        myMutex = getMutex()
+        try {
+            myMutex.acquire()
+            loggerQueueInstance = new java.util.concurrent.ConcurrentLinkedQueue()
+            loggerQueueMap[app.getId()] = loggerQueueInstance
+        }
+        catch (e) {
+            logger("Error in getLoggerQueue", "Warning")
+        }
+        finally {
+            myMutex.release()
+        }
+    }
+    return loggerQueueInstance
+}
+
 def queueToInfluxDb(data) {
     // Add timestamp (influxdb does this automatically, but since we're batching writes, we need to add it
     long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds
     data += " ${timeNow}"
 
     int queueSize = 0
-    try {
-        mutex.acquire()
 
-        loggerQueue.offer(data)
-        queueSize = loggerQueue.size()
+    java.util.concurrent.Semaphore myMutex = getMutex()
+    java.util.concurrent.ConcurrentLinkedQueue myLoggerQueue = getLoggerQueue()
+
+    try {
+        myMutex.acquire()
+
+        myLoggerQueue.offer(data)
+        queueSize = myLoggerQueue.size()
     }
     catch (e) {
         logger("Error 2 in queueToInfluxDb", "Warning")
     }
     finally {
-        mutex.release()
+        myMutex.release()
     }
 
     if (queueSize > (settings.prefWriteQueueLimit ?: 100)) {
@@ -710,22 +742,25 @@ def queueToInfluxDb(data) {
 def writeQueuedDataToInfluxDb() {
     String writeData = ""
 
-    try {
-        mutex.acquire()
+    java.util.concurrent.Semaphore myMutex = getMutex()
+    java.util.concurrent.ConcurrentLinkedQueue myLoggerQueue = getLoggerQueue()
 
-        if (loggerQueue.size() == 0) {
+    try {
+        myMutex.acquire()
+
+        if (myLoggerQueue.size() == 0) {
             logger("No queued data to write to InfluxDB", "info")
             return
         }
-        logger("Writing queued data of size ${loggerQueue.size()} out", "info")
-        writeData = loggerQueue.toArray().join('\n')
-        loggerQueue.clear()
+        logger("Writing queued data of size ${myLoggerQueue.size()} out", "info")
+        writeData = myLoggerQueue.toArray().join('\n')
+        myLoggerQueue.clear()
     }
     catch (e) {
         logger("Error 2 in writeQueuedDataToInfluxDb", "Warning")
     }
     finally {
-        mutex.release()
+        myMutex.release()
     }
 
     postToInfluxDB(writeData)
