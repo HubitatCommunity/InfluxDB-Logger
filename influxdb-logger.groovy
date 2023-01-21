@@ -173,6 +173,11 @@ def setupMain() {
                 }
             }
         }
+
+        section("Event Subscription Options:") {
+            input "filterEvents", "bool", title:"Filter Events (true = only when value changes)?", defaultValue: false, required: true, submitOnChange: true
+        }
+
     }
 }
 
@@ -875,7 +880,7 @@ private manageSubscriptions() {
                 da.attributes.each { attr ->
                     logger("manageSubscriptions(): Subscribing to attribute: ${attr}, for devices: ${da.devices}", "info")
                     // There is no need to check if all devices in the collection have the attribute.
-                    subscribe(devs, attr, handleEvent)
+                    subscribe(devs, attr, handleEvent, ["filterEvents": filterEvents ])
                 }
             }
         }
@@ -884,7 +889,7 @@ private manageSubscriptions() {
             d = getDeviceObj(entry.key)
             entry.value.each { attr ->
                 logger("manageSubscriptions(): Subscribing to attribute: ${attr}, for device: ${d}", "info")
-                subscribe(d, attr, handleEvent)
+                subscribe(d, attr, handleEvent, ["filterEvents": filterEvents ])
             }
         }
     }
