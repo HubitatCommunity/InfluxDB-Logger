@@ -599,6 +599,7 @@ def softPoll() {
     logSystemProperties()
 
     long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds
+    logger("softPoll() : current time is ${timeNow}","Trace")
 
     if (!accessAllAttributes) {
         // Iterate over each attribute for each device, in each device collection in deviceAttributes:
@@ -696,10 +697,6 @@ def logSystemProperties() {
 }
 
 def queueToInfluxDb(data) {
-    // Add timestamp (influxdb does this automatically, but since we're batching writes, we need to add it
-    //long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds
-    //data += " ${timeNow}"
-
     int queueSize = 0
     try {
         mutex.acquire()
