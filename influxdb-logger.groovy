@@ -598,9 +598,6 @@ def softPoll() {
 
     logSystemProperties()
 
-    long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds
-    logger("softPoll() : current time is ${timeNow}","Trace")
-
     if (!accessAllAttributes) {
         // Iterate over each attribute for each device, in each device collection in deviceAttributes:
         def devs // temp variable to hold device collection.
@@ -611,8 +608,8 @@ def softPoll() {
                     da.attributes.each { attr ->
                         if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
                             logger("softPoll(): Softpolling device ${d} for attribute: ${attr}", "info")
+                            long timeNow = new Date().time
                             // Send fake event to handleEvent():
-
                             handleEvent([
                                 name: attr,
                                 value: d.latestState(attr)?.value,
@@ -633,6 +630,7 @@ def softPoll() {
             entry.value.each { attr ->
                 if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
                     logger("softPoll(): Softpolling device ${d} for attribute: ${attr}", "info")
+                    long timeNow = new Date().time
                     // Send fake event to handleEvent():
                     handleEvent([
                         name: attr,
@@ -658,7 +656,7 @@ def logSystemProperties() {
     logger("logSystemProperties()", "trace")
 
     def locationName = '"' + escapeStringForInfluxDB(location.name) + '"'
-    long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds
+    long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds when pushed to InfluxDB
 
     // Location Properties:
     if (prefLogLocationProperties) {
