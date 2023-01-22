@@ -570,8 +570,16 @@ def handleEvent(evt) {
     }
 
     // add event timestamp
-    long eventTimestamp = evt.unixTime * 1e6 // Time is in milliseconds, needs to be in nanoseconds
-    data += " ${eventTimestamp}"
+    long dataTimestamp
+    eventTimestamp = evt?.unixTime
+    if (eventTimestamp) {
+        dataTimestamp = eventTimestamp
+    } else {
+        // create a data timestamp if it is missing from the event (for backward compat)
+        dataTimestamp = new Date().time
+    }
+    dataTimestamp *= 1e6   // Time is in milliseconds, InfluxDB expects nanoseconds
+    data += " ${dataTimestamp}"
 
     // Queue data for later write to InfluxDB
     //logger("$data", "info")
