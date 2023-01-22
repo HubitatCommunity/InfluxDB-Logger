@@ -87,7 +87,7 @@ def setupMain() {
 
         }
 
-        section("Change Application Name (optional)"){
+        section("Change Application Name"){
             input "nameOverride", "text", title: "New Name for Application", multiple: false, required: false, submitOnChange: true, defaultValue: app.getLabel()
             if(nameOverride != app.getLabel) app.updateLabel(nameOverride)
         }
