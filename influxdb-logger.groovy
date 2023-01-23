@@ -345,9 +345,8 @@ def handleModeEvent(evt) {
 
     def locationName = escapeStringForInfluxDB(location.name)
     def mode = '"' + escapeStringForInfluxDB(evt.value) + '"'
-    def data = "_stMode,locationName=${locationName} mode=${mode}"
-    long eventTimestamp = evt.unixTime * 1e6 // Time is in milliseconds, needs to be in nanoseconds
-    data += " ${eventTimestamp}"
+    long eventTimestamp = evt.unixTime * 1e6       // Time is in milliseconds, but InfluxDB expects nanoseconds
+    def data = "_stMode,locationName=${locationName} mode=${mode} ${eventTimestamp}"
     queueToInfluxDb(data)
 }
 
