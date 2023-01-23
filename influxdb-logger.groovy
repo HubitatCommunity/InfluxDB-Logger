@@ -175,7 +175,7 @@ def setupMain() {
         }
 
         section("Event Subscription Options:") {
-            input "filterEvents", "bool", title:"Filter Events (true = only when value changes)?", defaultValue: true, required: true, submitOnChange: true
+            input "filterEvents", "bool", title:"Only log events when the value changes", defaultValue: true, required: true, submitOnChange: true
         }
 
     }
