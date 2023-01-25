@@ -24,20 +24,20 @@
  *   Modifcation History
  *   Date       Name            Change
  *   2019-02-02 Dan Ogorchock   Use asynchttpPost() instead of httpPost() call
- *   2019-09-09 Caleb Morse     Support deferring writes and doing buld writes to influxdb
+ *   2019-09-09 Caleb Morse     Support deferring writes and doing bulk writes to influxdb
  *   2022-06-20 Denny Page      Remove nested sections for device selection.
  *   2023-01-08 Denny Page      Address whitespace related lint issues. No functional changes.
  *   2023-01-09 Craig King      Added InfluxDb2.x support.
- *   2023=01-12 Denny Page      Automatic migration of Influx 1.x settings.
+ *   2023-01-12 Denny Page      Automatic migration of Influx 1.x settings.
  *   2023-01-15 Denny Page      Clean up various things:
  *                              Remove Group ID/Name which are not supported on Hubitat.
  *                              Remove Location ID and Hub ID which are not supported on Hubitat (always 1).
  *                              Remove blocks of commented out code.
  *                              Don't set page sections hidden to false where hideable is false.
  *                              Remove state.queuedData.
- *   2023=01-22 PJ              Add filterEvents option for subscribe.
+ *   2023-01-22 PJ              Add filterEvents option for subscribe.
  *                              Fix event timestamps.
- *   2023=01-23 Denny Page      Allow multiple instances of the application to be installed.
+ *   2023-01-23 Denny Page      Allow multiple instances of the application to be installed.
  *                              NB: This requires Hubitat 2.2.9 or above.
  *****************************************************************************************************************/
 
@@ -357,6 +357,8 @@ def handleModeEvent(evt) {
     def locationName = escapeStringForInfluxDB(location.name)
     def mode = '"' + escapeStringForInfluxDB(evt.value) + '"'
     long eventTimestamp = evt.unixTime * 1e6       // Time is in milliseconds, but InfluxDB expects nanoseconds
+    // TODO eventually change measurement tag to _heMode ?
+    //def data = "_stMode,locationName=${locationName} mode=${mode} ${eventTimestamp}"
     def data = "_stMode,locationName=${locationName} mode=${mode} ${eventTimestamp}"
     queueToInfluxDb(data)
 }
@@ -383,12 +385,13 @@ def handleEvent(evt, softPolled = false) {
     String deviceName = escapeStringForInfluxDB(evt?.displayName)
     String hubName = escapeStringForInfluxDB(evt?.device?.device?.hub?.name?.toString())
     String locationName = escapeStringForInfluxDB(location.name)
+    String sampleType = softPolled ? "state" : "event"
 
     String unit = escapeStringForInfluxDB(evt.unit)
     String value = escapeStringForInfluxDB(evt.value)
     String valueBinary = ''
 
-    String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName},hubName=${hubName},locationName=${locationName},softPolled=${softPolled}"
+    String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName},hubName=${hubName},locationName=${locationName},sampleType=${sampleType}"
 
     // Unit tag and fields depend on the event type:
     //  Most string-valued attributes can be translated to a binary value too.
@@ -624,7 +627,7 @@ def softPoll() {
                                 unit: d.latestState(attr)?.unit,
                                 device: d,
                                 deviceId: d.id,
-                                displayName: d.displayName
+                                displayName: d.displayName,
                                 unixTime: timeNow
                             ], true)
                         }
