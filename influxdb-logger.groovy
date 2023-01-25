@@ -39,6 +39,7 @@
  *                              Fix event timestamps.
  *   2023=01-23 Denny Page      Allow multiple instances of the application to be installed.
  *                              NB: This requires Hubitat 2.2.9 or above.
+ *   2023=01-25 Craig King      Updated Button selection to valid capability for Hubitat
  *****************************************************************************************************************/
 
 definition(
