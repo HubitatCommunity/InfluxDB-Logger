@@ -385,7 +385,7 @@ def handleEvent(evt, softPolled = false) {
     String deviceName = escapeStringForInfluxDB(evt?.displayName)
     String hubName = escapeStringForInfluxDB(evt?.device?.device?.hub?.name?.toString())
     String locationName = escapeStringForInfluxDB(location.name)
-    String sampleType = softPolled ? "state" : "event"
+    String sampleType = escapeStringForInfluxDB(evt.type)
 
     String unit = escapeStringForInfluxDB(evt.unit)
     String value = escapeStringForInfluxDB(evt.value)
@@ -631,6 +631,7 @@ def softPoll() {
                                 device: d,
                                 deviceId: d.id,
                                 displayName: d.displayName,
+                                type: "state",
                                 unixTime: timeNow
                             ], true)
                         }
@@ -653,6 +654,7 @@ def softPoll() {
                         device: d,
                         deviceId: d.id,
                         displayName: d.displayName,
+                        type: "state",
                         unixTime: timeNow
                     ], true)
                 }
