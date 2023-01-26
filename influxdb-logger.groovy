@@ -28,18 +28,18 @@
  *   2022-06-20 Denny Page      Remove nested sections for device selection.
  *   2023-01-08 Denny Page      Address whitespace related lint issues. No functional changes.
  *   2023-01-09 Craig King      Added InfluxDb2.x support.
- *   2023=01-12 Denny Page      Automatic migration of Influx 1.x settings.
+ *   2023-01-12 Denny Page      Automatic migration of Influx 1.x settings.
  *   2023-01-15 Denny Page      Clean up various things:
  *                              Remove Group ID/Name which are not supported on Hubitat.
  *                              Remove Location ID and Hub ID which are not supported on Hubitat (always 1).
  *                              Remove blocks of commented out code.
  *                              Don't set page sections hidden to false where hideable is false.
  *                              Remove state.queuedData.
- *   2023=01-22 PJ              Add filterEvents option for subscribe.
+ *   2023-01-22 PJ              Add filterEvents option for subscribe.
  *                              Fix event timestamps.
- *   2023=01-23 Denny Page      Allow multiple instances of the application to be installed.
+ *   2023-01-23 Denny Page      Allow multiple instances of the application to be installed.
  *                              NB: This requires Hubitat 2.2.9 or above.
- *   2023=01-25 Craig King      Updated Button selection to valid capability for Hubitat
+ *   2023-01-25 Craig King      Updated Button selection to valid capability for Hubitat
  *****************************************************************************************************************/
 
 definition(
@@ -403,12 +403,6 @@ def handleEvent(evt) {
         unit = 'alarm'
         value = '"' + value + '"'
         valueBinary = ('off' == evt.value) ? '0i' : '1i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('button' == evt.name) { // button: Calculate a binary value (held = 1, pushed = 0)
-        unit = 'button'
-        value = '"' + value + '"'
-        valueBinary = ('pushed' == evt.value) ? '0i' : '1i'
         data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
     }
     else if ('carbonMonoxide' == evt.name) { // carbonMonoxide: Calculate a binary value (detected = 1, clear/tested = 0)
