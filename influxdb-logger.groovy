@@ -91,12 +91,12 @@ def setupMain() {
         }
 
         section("Polling / Write frequency:") {
-            input "prefSoftPollingInterval", "number", title:"Soft-Polling interval (minutes)", defaultValue: 10, required: true
+            input "prefSoftPollingInterval", "number", title:"Device State (Soft-)Polling interval (minutes)", defaultValue: 10, required: true
 
             input "writeInterval", "enum", title:"How often to write to db (minutes)", defaultValue: "5", required: true,
                 options: ["1",  "2", "3", "4", "5", "10", "15"]
 
-                input "prefWriteQueueLimit", "number", title:"Write Interval Queue Size Limit", defaultValue: 50, required: true
+            input "prefWriteQueueLimit", "number", title:"Write Interval Queue Size Limit", defaultValue: 50, required: true
         }
 
         section("System Monitoring:") {
@@ -391,7 +391,7 @@ def handleEvent(evt, softPolled = false) {
     String value = escapeStringForInfluxDB(evt.value)
     String valueBinary = ''
 
-    String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName},hubName=${hubName},locationName=${locationName},sampleType=${sampleType}"
+    String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName},hubName=${hubName},locationName=${locationName}"
 
     // Unit tag and fields depend on the event type:
     //  Most string-valued attributes can be translated to a binary value too.
@@ -581,6 +581,9 @@ def handleEvent(evt, softPolled = false) {
     else {
         data += ",unit=${unit} value=${value}"
     }
+
+    // add sample type to the measurement as field
+    data += ",sampleType=\"${sampleType}\""
 
     // add event timestamp
     long eventTimestamp = evt?.unixTime * 1e6   // Time is in milliseconds, InfluxDB expects nanoseconds
