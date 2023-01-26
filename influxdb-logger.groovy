@@ -385,12 +385,14 @@ def handleEvent(evt, softPolled = false) {
     String deviceName = escapeStringForInfluxDB(evt?.displayName)
     String hubName = escapeStringForInfluxDB(evt?.device?.device?.hub?.name?.toString())
     String locationName = escapeStringForInfluxDB(location.name)
+    String sampleType = escapeStringForInfluxDB(evt.type)
+
 
     String unit = escapeStringForInfluxDB(evt.unit)
     String value = escapeStringForInfluxDB(evt.value)
     String valueBinary = ''
 
-    String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName},hubName=${hubName},locationName=${locationName}"
+    String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName},hubName=${hubName},locationName=${locationName},type=${sampleType}"
 
     // Unit tag and fields depend on the event type:
     //  Most string-valued attributes can be translated to a binary value too.
@@ -580,10 +582,6 @@ def handleEvent(evt, softPolled = false) {
     else {
         data += ",unit=${unit} value=${value}"
     }
-
-    // add sample type to the measurement as field
-    String sampleType = escapeStringForInfluxDB(evt.type)
-    data += ",sampleType=\"${sampleType}\""
 
     // add event timestamp
     long eventTimestamp = evt?.unixTime * 1e6   // Time is in milliseconds, InfluxDB expects nanoseconds
