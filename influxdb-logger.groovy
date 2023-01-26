@@ -371,7 +371,7 @@ def handleModeEvent(evt) {
  *   - Calculates logical binary values where string values can be
  *     represented as binary values (e.g. contact: closed = 1, open = 0)
  **/
-def handleEvent(evt, softPolled = false) {
+def handleEvent(evt) {
     //logger("handleEvent(): $evt.unit", "info")
     logger("handleEvent(): $evt.displayName($evt.name:$evt.unit) value=$evt.value type=$evt.type", "info")
 
@@ -631,7 +631,7 @@ def softPoll() {
                                 displayName: d.displayName,
                                 type: "state",
                                 unixTime: timeNow
-                            ], true)
+                            ])
                         }
                     }
                 }
@@ -654,7 +654,7 @@ def softPoll() {
                         displayName: d.displayName,
                         type: "state",
                         unixTime: timeNow
-                    ], true)
+                    ])
                 }
             }
         }
