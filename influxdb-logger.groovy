@@ -373,10 +373,10 @@ def handleModeEvent(evt) {
  **/
 def handleEvent(evt, softPolled = false) {
     //logger("handleEvent(): $evt.unit", "info")
-    logger("handleEvent(): $evt.displayName($evt.name:$evt.unit) $evt.value", "info")
+    logger("handleEvent(): $evt.displayName($evt.name:$evt.unit) value=$evt.value type=$evt.type", "info")
 
     // Build data string to send to InfluxDB:
-    //  Format: <measurement>[,<tag_name>=<tag_value>] field=<field_value>
+    //  Format: <measurement>[,<tag_name>=<tag_value>] field=<field_value> timestamp
     //    If value is an integer, it must have a trailing "i"
     //    If value is a string, it must be enclosed in double quotes.
     String measurement = evt.name
@@ -385,7 +385,6 @@ def handleEvent(evt, softPolled = false) {
     String deviceName = escapeStringForInfluxDB(evt?.displayName)
     String hubName = escapeStringForInfluxDB(evt?.device?.device?.hub?.name?.toString())
     String locationName = escapeStringForInfluxDB(location.name)
-    String sampleType = escapeStringForInfluxDB(evt.type)
 
     String unit = escapeStringForInfluxDB(evt.unit)
     String value = escapeStringForInfluxDB(evt.value)
@@ -583,6 +582,7 @@ def handleEvent(evt, softPolled = false) {
     }
 
     // add sample type to the measurement as field
+    String sampleType = escapeStringForInfluxDB(evt.type)
     data += ",sampleType=\"${sampleType}\""
 
     // add event timestamp
