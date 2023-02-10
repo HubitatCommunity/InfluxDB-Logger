@@ -186,7 +186,10 @@ def setupMain() {
 def connectionPage() {
     dynamicPage(name: "connectionPage", title: "Connection Properties", install: false, uninstall: false) {
         section {
-            input "prefDatabaseTls", "bool", title:"Use TLS?", defaultValue: false, required: true
+            input "prefDatabaseTls", "bool", title:"Use TLS?", defaultValue: false, submitOnChange: true, required: true
+            if (prefDatabaseTls) {
+                input "prefIgnoreSSLIssues", "bool", title:"Ignore SSL cert verification issues", defaultValue:false, required: true
+            }
             input "prefDatabaseHost", "text", title: "Host", defaultValue: "192.168.1.100", required: true
             input "prefDatabasePort", "text", title : "Port", defaultValue : prefDatabaseTls ? "443" : "8086", required : false
             input(
@@ -757,6 +760,7 @@ def postToInfluxDB(data) {
             requestContentType: 'application/json',
             contentType: 'application/json',
             headers: state.headers,
+            ignoreSSLIssues: settings.prefIgnoreSSLIssues,
             body : data
         ]
         asynchttpPost('handleInfluxResponse', postParams)
@@ -958,4 +962,3 @@ private String escapeStringForInfluxDB(String str) {
     }
     return str
 }
-
