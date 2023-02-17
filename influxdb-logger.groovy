@@ -24,7 +24,7 @@
  *   Modifcation History
  *   Date       Name            Change
  *   2019-02-02 Dan Ogorchock   Use asynchttpPost() instead of httpPost() call
- *   2019-09-09 Caleb Morse     Support deferring writes and doing buld writes to influxdb
+ *   2019-09-09 Caleb Morse     Support deferring writes and doing bulk writes to influxdb
  *   2022-06-20 Denny Page      Remove nested sections for device selection.
  *   2023-01-08 Denny Page      Address whitespace related lint issues. No functional changes.
  *   2023-01-09 Craig King      Added InfluxDb2.x support.
@@ -97,7 +97,7 @@ def setupMain() {
             input "writeInterval", "enum", title:"How often to write to db (minutes)", defaultValue: "5", required: true,
                 options: ["1",  "2", "3", "4", "5", "10", "15"]
 
-                input "prefWriteQueueLimit", "number", title:"Write Interval Queue Size Limit", defaultValue: 50, required: true
+            input "prefWriteQueueLimit", "number", title:"Write Interval Queue Size Limit", defaultValue: 50, required: true
         }
 
         section("System Monitoring:") {
@@ -953,3 +953,4 @@ private String escapeStringForInfluxDB(String str) {
     }
     return str
 }
+
