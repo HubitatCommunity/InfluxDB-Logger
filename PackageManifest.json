@@ -1,10 +1,10 @@
 {
   "packageName": "InfluxDB-Logger",
   "author": "Joshua Marker (tooluser)",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "minimumHEVersion": "2.2.9",
-  "dateReleased": "2023-01-23",
-  "releaseNotes": "2.2.0 Allow multiple instances\n2.1.0 cleanup of various SmartThings items\n2.0.0 InfluxDB 2 support",
+  "dateReleased": "2023-02-26",
+  "releaseNotes": "2.3.0 Cleanup and rationalize UI\nUse time since first data value to trigger post rather than periodic timer\nOnly create a keep alive event (softpoll) when no real event has been seen\nCleanup and rationalize logging",
   "communityLink": "https://community.hubitat.com/t/influxdb-logger/110548",
   "apps": [
     {
