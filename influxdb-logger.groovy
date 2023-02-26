@@ -8,9 +8,6 @@
  *  Original Author: David Lomas (codersaur)
  *  Hubitat Elevation version maintained by HubitatCommunity (https://github.com/HubitatCommunity/InfluxDB-Logger)
  *
- *  Description: A SmartApp to log Hubitat device states to an InfluxDB database.
- *  See Codersaur's github repo for more information.
- *
  *  License:
  *   Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *   in compliance with the License. You may obtain a copy of the License at:
@@ -39,6 +36,14 @@
  *                              Fix event timestamps.
  *   2023-01-23 Denny Page      Allow multiple instances of the application to be installed.
  *                              NB: This requires Hubitat 2.2.9 or above.
+ *   2023-01-25 Craig King      Updated Button selection to valid capability for Hubitat
+ *   2023-02-16 PJ              Add error message to log for http response >= 400
+ *                              Allow ssl cert verification to be disabled (self signed certificates)
+ *   2023-02-26 Denny Page      Cleanup and rationalize UI
+ *                              Use time since first data value to trigger post rather than periodic timer
+ *                              Only create a keep alive event (softpoll) when no real event has been seen
+ *                              Cleanup and rationalize logging
+ *                              Further code cleanup
  *****************************************************************************************************************/
 
 definition(
@@ -60,62 +65,105 @@ preferences {
 }
 
 def setupMain() {
-    dynamicPage(name: "setupMain", title: "InfluxDB Logger Settings", install: true, uninstall: true) {
-        section("") {
-            input "appName", "text", title: "Aplication Name", multiple: false, required: false, submitOnChange: true, defaultValue: app.getLabel()
-
-            href(
-                name: "href",
-                title: "Connection Settings",
-                description : prefDatabaseHost == null ? "Configure database connection parameters" : prefDatabaseHost,
-                required: true,
-                page: "connectionPage"
-            )
+    dynamicPage(name: "setupMain", title: "<h2>InfluxDB Logger</h2>", install: true, uninstall: true) {
+        section("<h3>\nGeneral Settings:</h3>") {
+            input "appName", "text", title: "Aplication Name", multiple: false, required: true, submitOnChange: true, defaultValue: app.getLabel()
 
             input(
                 name: "configLoggingLevelIDE",
-                title: "IDE Live Logging Level:\nMessages with this level and higher will be logged to the IDE.",
+                title: "System log level - messages with this level and higher will be sent to the system log",
                 type: "enum",
                 options: [
                     "0" : "None",
                     "1" : "Error",
                     "2" : "Warning",
                     "3" : "Info",
-                    "4" : "Debug",
-                    "5" : "Trace"
+                    "4" : "Debug"
                 ],
-                defaultValue: "3",
-                displayDuringSetup: true,
+                defaultValue: "2",
                 required: false
             )
         }
 
-        section("Polling / Write frequency:") {
-            input "prefSoftPollingInterval", "number", title:"Device State (Soft-)Polling interval (minutes)", defaultValue: 10, required: true
-
-            input "writeInterval", "enum", title:"How often to write to db (minutes)", defaultValue: "5", required: true,
-                options: ["1",  "2", "3", "4", "5", "10", "15"]
-
-            input "prefWriteQueueLimit", "number", title:"Write Interval Queue Size Limit", defaultValue: 50, required: true
+        section("\n<h3>InfluxDB Settings:</h3>") {
+            href(
+                name: "href",
+                title: "InfluxDB connection",
+                description : prefDatabaseHost == null ? "Configure database connection parameters" : prefDatabaseHost,
+                required: true,
+                page: "connectionPage"
+            )
+            input(
+                name: "prefBatchTimeLimit",
+                title: "Batch time limit - maximum number of seconds before writing a batch to InfluxDB (range 1-60)",
+                type: "number",
+                range: "1..60",
+                defaultValue: "60",
+                required: true
+            )
+            input(
+                name: "prefBatchSizeLimit",
+                title: "Batch size limit - maximum number of pending events before writing a batch to InfluxDB (range 1-100)",
+                type: "number",
+                range: "1..100",
+                defaultValue: "50",
+                required: true
+            )
         }
 
-        section("System Monitoring:") {
-            input "prefLogModeEvents", "bool", title:"Log Mode Events?", defaultValue: false, required: true
-            input "prefLogHubProperties", "bool", title:"Log Hub Properties?", defaultValue: false, required: true
-            input "prefLogLocationProperties", "bool", title:"Log Location Properties?", defaultValue: false, required: true
+        section("\n<h3>Device Event Handling:</h3>") {
+            input "filterEvents", "bool", title:"Only post events when the data value changes", defaultValue: true
+
+            input(
+                // NB: Called prefSoftPollingInterval for backward compatibility with prior versions
+                name: "prefSoftPollingInterval",
+                title: "Post keep alive events (aka softpoll) - re-post last value if a new event has not occurred in this time",
+                type: "enum",
+                options: [
+                    "0" : "disabled",
+                    "1" : "1 minute (not recommended)",
+                    "5" : "5 minutes",
+                    "10" : "10 minutes",
+                    "15" : "15 minutes",
+                    "30" : "30 minutes",
+                    "60" : "60 minutes"
+                ],
+                defaultValue: "15",
+                submitOnChange: true,
+                required: true
+            )
         }
 
-        section("Input Format Preference:") {
-            input "accessAllAttributes", "bool", title:"Get Access To All Attributes?", defaultValue: false, required: true, submitOnChange: true
-        }
+        section("Devices To Monitor:", hideable:true, hidden:false) {
+            input "accessAllAttributes", "bool", title:"Advanced attribute seletion?", defaultValue: false, submitOnChange: true
 
-        if (!accessAllAttributes) {
-            section("Devices To Monitor:", hideable:false) {
+            if (accessAllAttributes) {
+                input name: "allDevices", type: "capability.*", title: "Selected Devices", multiple: true, required: false, submitOnChange: true
+
+                state.selectedAttr = [:]
+                settings.allDevices.each { deviceName ->
+                    if (deviceName) {
+                        deviceId = deviceName.getId()
+                        attr = deviceName.getSupportedAttributes().unique()
+                        if (attr) {
+                            state.options = []
+                            index = 0
+                            attr.each { at ->
+                                state.options[index] = "${at}"
+                                index = index + 1
+                            }
+                            input name:"attrForDev$deviceId", type: "enum", title: "$deviceName", options: state.options, multiple: true, required: false, submitOnChange: true
+                            state.selectedAttr[deviceId] = settings["attrForDev" + deviceId]
+                        }
+                    }
+                }
+            }
+            else {
                 input "accelerometers", "capability.accelerationSensor", title: "Accelerometers", multiple: true, required: false
                 input "alarms", "capability.alarm", title: "Alarms", multiple: true, required: false
                 input "batteries", "capability.battery", title: "Batteries", multiple: true, required: false
                 input "beacons", "capability.beacon", title: "Beacons", multiple: true, required: false
-                input "buttons", "capability.button", title: "Buttons", multiple: true, required: false
+                input "buttons", "capability.pushableButton", title: "Buttons", multiple: true, required: false
                 input "cos", "capability.carbonMonoxideDetector", title: "Carbon Monoxide Detectors", multiple: true, required: false
                 input "co2s", "capability.carbonDioxideMeasurement", title: "Carbon Dioxide Detectors", multiple: true, required: false
                 input "colors", "capability.colorControl", title: "Color Controllers", multiple: true, required: false
@@ -151,34 +199,15 @@ def setupMain() {
                 input "volts", "capability.voltageMeasurement", title: "Voltage Meters", multiple: true, required: false
                 input "waterSensors", "capability.waterSensor", title: "Water Sensors", multiple: true, required: false
                 input "windowShades", "capability.windowShade", title: "Window Shades", multiple: true, required: false
-            }
-        } else {
-            section("Devices To Monitor:", hideable:false) {
-                input name: "allDevices", type: "capability.*", title: "Selected Devices", multiple: true, required: false, submitOnChange: true
-            }
-            state.selectedAttr = [:]
-            settings.allDevices.each { deviceName ->
-                if (deviceName) {
-                    deviceId = deviceName.getId()
-                    attr = deviceName.getSupportedAttributes().unique()
-                    if (attr) {
-                        state.options = []
-                        index = 0
-                        attr.each { at ->
-                            state.options[index] = "${at}"
-                            index = index + 1
-                        }
-                        section("$deviceName", hideable: true) {
-                            input name:"attrForDev$deviceId", type: "enum", title: "$deviceName", options: state.options, multiple: true, required: false, submitOnChange: true
-                        }
-                        state.selectedAttr[deviceId] = settings["attrForDev" + deviceId]
-                    }
-                }
-            }
+             }
         }
 
-        section("Event Subscription Options:") {
-            input "filterEvents", "bool", title:"Only log events when the value changes", defaultValue: true, required: true, submitOnChange: true
+        if (prefSoftPollingInterval != "0") {
+            section("System Monitoring:", hideable:true, hidden:true) {
+                input "prefLogModeEvents", "bool", title:"Post Mode Events?", defaultValue: false
+                input "prefLogHubProperties", "bool", title:"Post Hub Properties?", defaultValue: false
+                input "prefLogLocationProperties", "bool", title:"Post Location Properties?", defaultValue: false
+            }
         }
     }
 }
@@ -186,8 +215,12 @@ def setupMain() {
 def connectionPage() {
     dynamicPage(name: "connectionPage", title: "Connection Properties", install: false, uninstall: false) {
         section {
-            input "prefDatabaseTls", "bool", title:"Use TLS?", defaultValue: false, required: true
-            input "prefDatabaseHost", "text", title: "Host", defaultValue: "192.168.1.100", required: true
+            input "prefDatabaseTls", "bool", title:"Use TLS?", defaultValue: false, submitOnChange: true
+            if (prefDatabaseTls) {
+                input "prefIgnoreSSLIssues", "bool", title:"Ignore SSL cert verification issues", defaultValue:false
+            }
+
+            input "prefDatabaseHost", "text", title: "Host", defaultValue: "", required: true
             input "prefDatabasePort", "text", title : "Port", defaultValue : prefDatabaseTls ? "443" : "8086", required : false
             input(
                 name: "prefInfluxVer",
@@ -198,12 +231,12 @@ def connectionPage() {
                     "2" : "v2.x"
                 ],
                 defaultValue: "1",
-                submitOnChange: true,
-                required: true
+                submitOnChange: true
             )
             if (prefInfluxVer == "1") {
                 input "prefDatabaseName", "text", title: "Database Name", defaultValue: "Hubitat", required: true
-            } else if (prefInfluxVer == "2") {
+            }
+            else if (prefInfluxVer == "2") {
                 input "prefOrg", "text", title: "Org", defaultValue: "", required: true
                 input "prefBucket", "text", title: "Bucket", defaultValue: "", required: true
             }
@@ -217,13 +250,13 @@ def connectionPage() {
                     "token" : "Token"
                 ],
                 defaultValue: "none",
-                submitOnChange: true,
-                required: true
+                submitOnChange: true
             )
             if (prefAuthType == "basic") {
-                input "prefDatabaseUser", "text", title: "Username", defaultValue: "", required: false
-                input "prefDatabasePass", "text", title: "Password", defaultValue: "", required: false
-            } else if (prefAuthType == "token") {
+                input "prefDatabaseUser", "text", title: "Username", defaultValue: "", required: true
+                input "prefDatabasePass", "text", title: "Password", defaultValue: "", required: true
+            }
+            else if (prefAuthType == "token") {
                 input "prefDatabaseToken", "text", title: "Token", required: true
             }
         }
@@ -274,7 +307,7 @@ def uninstalled() {
  *  Refreshes scheduling and subscriptions.
  **/
 def updated() {
-    logger("updated()", "trace")
+    logger("updated", "debug")
 
     // Update application name
     app.updateLabel(appName)
@@ -293,7 +326,7 @@ def updated() {
     state.deviceAttributes << [ devices: 'alarms', attributes: ['alarm']]
     state.deviceAttributes << [ devices: 'batteries', attributes: ['battery']]
     state.deviceAttributes << [ devices: 'beacons', attributes: ['presence']]
-    state.deviceAttributes << [ devices: 'buttons', attributes: ['button']]
+    state.deviceAttributes << [ devices: 'buttons', attributes: ['pushed', 'doubleTapped', 'held', 'released']]
     state.deviceAttributes << [ devices: 'cos', attributes: ['carbonMonoxide']]
     state.deviceAttributes << [ devices: 'co2s', attributes: ['carbonDioxide']]
     state.deviceAttributes << [ devices: 'colors', attributes: ['hue', 'saturation', 'color']]
@@ -330,16 +363,40 @@ def updated() {
     state.deviceAttributes << [ devices: 'waterSensors', attributes: ['water']]
     state.deviceAttributes << [ devices: 'windowShades', attributes: ['windowShade']]
 
-    // Configure Scheduling:
-    state.softPollingInterval = settings.prefSoftPollingInterval.toInteger()
-    state.writeInterval = settings.writeInterval
-    manageSchedules()
-
     // Configure Subscriptions:
     manageSubscriptions()
 
+    // Flush any pending batch and set up softpoll if requested
+    unschedule()
+    runIn(1, writeQueuedDataToInfluxDb)
+
+    // Set up softpoll if requested
+    // NB: This is called softPoll to maintain backward compatibility wirh prior versions
+    state.softPollingInterval = settings.prefSoftPollingInterval.toInteger()
+    switch (state.softPollingInterval) {
+        case 1:
+            runEvery1Minute(softPoll)
+            break
+        case 5:
+            runEvery5Minutes(softPoll)
+            break
+        case 10:
+            runEvery10Minutes(softPoll)
+            break
+        case 15:
+            runEvery15Minutes(softPoll)
+            break
+        case 30:
+            runEvery30Minutes(softPoll)
+            break
+        case 60:
+            runEvery1Hour(softPoll)
+            break
+    }
+
     // Clean up old state variables
     state.remove("queuedData")
+    state.remove("writeInterval")
 }
 
 /*****************************************************************************************************************
@@ -352,7 +409,7 @@ def updated() {
  *  Log Mode changes.
  **/
 def handleModeEvent(evt) {
-    logger("handleModeEvent(): Mode changed to: ${evt.value}", "info")
+    logger("Mode changed to: ${evt.value}", "info")
 
     def locationName = escapeStringForInfluxDB(location.name)
     def mode = '"' + escapeStringForInfluxDB(evt.value) + '"'
@@ -372,8 +429,7 @@ def handleModeEvent(evt) {
  *     represented as binary values (e.g. contact: closed = 1, open = 0)
  **/
 def handleEvent(evt) {
-    //logger("handleEvent(): $evt.unit", "info")
-    logger("handleEvent(): $evt.displayName($evt.name:$evt.unit) value=$evt.value type=$evt.type", "info")
+    logger("Handle Event: $evt.displayName($evt.name:$evt.unit) $evt.value", "info")
 
     // Build data string to send to InfluxDB:
     //  Format: <measurement>[,<tag_name>=<tag_value>] field=<field_value> timestamp
@@ -574,7 +630,7 @@ def handleEvent(evt) {
     }
     // Catch any other event with a string value that hasn't been handled:
     else if (evt.value ==~ /.*[^0-9\.,-].*/) { // match if any characters are not digits, period, comma, or hyphen.
-        logger("handleEvent(): Found a string value that's not explicitly handled: Device Name: ${deviceName}, Event Name: ${evt.name}, Value: ${evt.value}", "warn")
+        logger("Found a string value not explicitly handled: Device Name: ${deviceName}, Event Name: ${evt.name}, Value: ${evt.value}", "warn")
         value = '"' + value + '"'
         data += ",unit=${unit} value=${value}"
     }
@@ -588,7 +644,6 @@ def handleEvent(evt) {
     data += " ${eventTimestamp}"
 
     // Queue data for later write to InfluxDB
-    //logger("$data", "info")
     queueToInfluxDb(data)
 }
 
@@ -599,19 +654,45 @@ def handleEvent(evt) {
 /**
  *  softPoll()
  *
- *  Executed by schedule.
+ *  NB: This function is called softPoll to maintain backward compatibility wirh prior versions
  *
- *  Forces data to be posted to InfluxDB (even if an event has not been triggered).
- *  Doesn't poll devices, just builds a fake event to pass to handleEvent().
+ *  Re-posts last value to InfluxDB unless an event has already been seen in the last softPollingInterval.
  *
  *  Also calls LogSystemProperties().
  **/
 def softPoll() {
-    logger("softPoll()", "trace")
+    logger("Keepalive check", "debug")
 
     logSystemProperties()
-    if (!accessAllAttributes) {
+
+    long timeNow = new Date().time
+    long lastTime = timeNow - (state.softPollingInterval * 60000)
+
+    if (accessAllAttributes) {
         // Iterate over each attribute for each device, in each device collection in deviceAttributes:
+        state.selectedAttr.each { entry ->
+            d = getDeviceObj(entry.key)
+            entry.value.each { attr ->
+                if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
+                    if (d.latestState(attr).date.time <= lastTime) {
+                        logger("Keep alive for device ${d}, attribute ${attr}", "info")
+                        // Send fake event to handleEvent():
+                        handleEvent([
+                            name: attr,
+                            value: d.latestState(attr)?.value,
+                            unit: d.latestState(attr)?.unit,
+                            device: d,
+                            deviceId: d.id,
+                            displayName: d.displayName,
+                            type: "state",
+                            unixTime: timeNow
+                        ])
+                    }
+                }
+            }
+        }
+    }
+    else {
         def devs // temp variable to hold device collection.
         state.deviceAttributes.each { da ->
             devs = settings."${da.devices}"
@@ -619,42 +700,22 @@ def softPoll() {
                 devs.each { d ->
                     da.attributes.each { attr ->
                         if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
-                            logger("softPoll(): Softpolling device ${d} for attribute: ${attr}", "info")
-                            long timeNow = new Date().time
-                            // Send fake event to handleEvent():
-                            handleEvent([
-                                name: attr,
-                                value: d.latestState(attr)?.value,
-                                unit: d.latestState(attr)?.unit,
-                                device: d,
-                                deviceId: d.id,
-                                displayName: d.displayName,
-                                type: "state",
-                                unixTime: timeNow
-                            ])
+                            if (d.latestState(attr).date.time <= lastTime) {
+                                logger("Keep alive for device ${d}, attribute ${attr}", "info")
+                                // Send fake event to handleEvent():
+                                handleEvent([
+                                    name: attr,
+                                    value: d.latestState(attr)?.value,
+                                    unit: d.latestState(attr)?.unit,
+                                    device: d,
+                                    deviceId: d.id,
+                                    displayName: d.displayName,
+                                    type: "state",
+                                    unixTime: timeNow
+                                ])
+                            }
                         }
                     }
-                }
-            }
-        }
-    } else {
-        state.selectedAttr.each { entry ->
-            d = getDeviceObj(entry.key)
-            entry.value.each { attr ->
-                if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
-                    logger("softPoll(): Softpolling device ${d} for attribute: ${attr}", "info")
-                    long timeNow = new Date().time
-                    // Send fake event to handleEvent():
-                    handleEvent([
-                        name: attr,
-                        value: d.latestState(attr)?.value,
-                        unit: d.latestState(attr)?.unit,
-                        device: d,
-                        deviceId: d.id,
-                        displayName: d.displayName,
-                        type: "state",
-                        unixTime: timeNow
-                    ])
                 }
             }
         }
@@ -664,10 +725,10 @@ def softPoll() {
 /**
  *  logSystemProperties()
  *
- *  Generates measurements for SmartThings system (hubs and locations) properties.
+ *  Generates measurements for hub and location properties.
  **/
 def logSystemProperties() {
-    logger("logSystemProperties()", "trace")
+    logger("Logging system properties", "debug")
 
     def locationName = '"' + escapeStringForInfluxDB(location.name) + '"'
     long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds when pushed to InfluxDB
@@ -683,9 +744,9 @@ def logSystemProperties() {
 
             def data = "_heLocation,locationName=${locationName},latitude=${location.latitude},longitude=${location.longitude},timeZone=${tz} mode=${mode},sunriseTime=${srt},sunsetTime=${sst} ${timeNow}"
             queueToInfluxDb(data)
-            //log.debug("LocationData = ${data}")
-        } catch (e) {
-            logger("logSystemProperties(): Unable to log Location properties: ${e}", "error")
+        }
+        catch (e) {
+            logger("Unable to log Location properties: ${e}", "error")
         }
     }
 
@@ -698,10 +759,10 @@ def logSystemProperties() {
                 def firmwareVersion =  '"' + escapeStringForInfluxDB(h.firmwareVersionString) + '"'
 
                 def data = "_heHub,locationName=${locationName},hubName=${hubName},hubIP=${hubIP} firmwareVersion=${firmwareVersion} ${timeNow}"
-                //log.debug("HubData = ${data}")
                 queueToInfluxDb(data)
-            } catch (e) {
-                logger("logSystemProperties(): Unable to log Hub properties: ${e}", "error")
+            }
+            catch (e) {
+                logger("Unable to log Hub properties: ${e}", "error")
             }
         }
     }
@@ -716,9 +777,14 @@ def queueToInfluxDb(data) {
     }
 
     loggerQueue.add(data)
-    if (loggerQueue.size() > (settings.prefWriteQueueLimit ?: 100)) {
-        logger("Queue size is too big, triggering write now", "info")
+    if (loggerQueue.size() >= (settings.prefBatchSizeLimit ?: 50)) {
+        logger("Maximum queue size reached", "debug")
         writeQueuedDataToInfluxDb()
+    }
+    else if (loggerQueue.size() == 1) {
+        logger("Scheduling batch", "debug")
+        // prefBatchTimeLimit does not exist in older configurations
+        runIn(settings.prefBatchTimeLimit ? settings.prefBatchTimeLimit.toInteger() : 60, writeQueuedDataToInfluxDb)
     }
 }
 
@@ -731,11 +797,11 @@ def writeQueuedDataToInfluxDb() {
 
     Integer size = loggerQueue.size()
     if (size == 0) {
-        logger("No queued data to write to InfluxDB", "info")
+        logger("No queued data to write to InfluxDB", "debug")
         return
     }
 
-    logger("Writing queued data of size ${size}", "info")
+    logger("Writing queued data of size ${size}", "debug")
     String writeData = loggerQueue.toArray().join('\n')
     postToInfluxDB(writeData)
     loggerQueue.clear()
@@ -746,7 +812,6 @@ def writeQueuedDataToInfluxDb() {
  *
  *  Posts data to InfluxDB.
  *
- *  Uses hubAction instead of httpPost() in case InfluxDB server is on the same LAN as the Smartthings Hub.
  **/
 def postToInfluxDB(data) {
     if (state.uri == null) {
@@ -766,8 +831,9 @@ def postToInfluxDB(data) {
             body : data
         ]
         asynchttpPost('handleInfluxResponse', postParams)
-    } catch (e) {
-        logger("postToInfluxDB(): Something went wrong when posting: ${e}", "error")
+    }
+    catch (e) {
+        logger("Error creating post to InfluxDB: ${e}", "error")
     }
 }
 
@@ -777,9 +843,11 @@ def postToInfluxDB(data) {
  *  Handles response from post made in postToInfluxDB().
  **/
 def handleInfluxResponse(hubResponse, data) {
-    //logger("postToInfluxDB(): status of post call is: ${hubResponse.status}", "info")
     if (hubResponse.status >= 400) {
-        logger("postToInfluxDB(): Something went wrong! Response from InfluxDB: Status: ${hubResponse.status}, Headers: ${hubResponse.headers}, Data: ${data}", "error")
+        logger("Error posting to InfluxDB: Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "error")
+    }
+    else {
+        logger("Status of post call is: ${hubResponse.status}", "debug")
     }
 }
 
@@ -798,7 +866,8 @@ private setupDB() {
 
     if (settings?.prefDatabaseTls) {
         uri = "https://"
-    } else {
+    }
+    else {
         uri = "http://"
     }
 
@@ -809,7 +878,8 @@ private setupDB() {
 
     if (settings?.prefInfluxVer == "2") {
         uri += "/api/v2/write?org=${settings.prefOrg}&bucket=${settings.prefBucket}"
-    } else {
+    }
+    else {
         // Influx version 1
         uri += "/write?db=${settings.prefDatabaseName}"
     }
@@ -819,14 +889,15 @@ private setupDB() {
             def userpass = "${settings.prefDatabaseUser}:${settings.prefDatabasePass}"
             headers.put("Authorization", "Basic " + userpass.bytes.encodeBase64().toString())
         }
-    } else if (settings.prefAuthType == "token") {
+    }
+    else if (settings.prefAuthType == "token") {
         headers.put("Authorization", "Token ${settings.prefDatabaseToken}")
     }
 
     state.uri = uri
     state.headers = headers
 
-    logger("New URI: ${uri}", "info")
+    logger("InfluxDB URI: ${uri}", "info")
 
     // Clean up old state vars if present
     state.remove("databaseHost")
@@ -838,43 +909,12 @@ private setupDB() {
 }
 
 /**
- *  manageSchedules()
- *
- *  Configures/restarts scheduled tasks:
- *   softPoll() - Run every {state.softPollingInterval} minutes.
- **/
-private manageSchedules() {
-    logger("manageSchedules()", "trace")
-
-    // Generate a random offset (1-60):
-    Random rand = new Random(now())
-    def randomOffset = 0
-
-    try {
-        unschedule(softPoll)
-        unschedule(writeQueuedDataToInfluxDb)
-    }
-    catch (e) {
-        // logger("manageSchedules(): Unschedule failed!", "error")
-    }
-
-    randomOffset = rand.nextInt(50)
-    if (state.softPollingInterval > 0) {
-        logger("manageSchedules(): Scheduling softpoll to run every ${state.softPollingInterval} minutes (offset of ${randomOffset} seconds).", "trace")
-        schedule("${randomOffset} 0/${state.softPollingInterval} * * * ?", "softPoll")
-    }
-
-    randomOffset = randomOffset + 8
-    schedule("${randomOffset} 0/${state.writeInterval} * * * ?", "writeQueuedDataToInfluxDb")
-}
-
-/**
  *  manageSubscriptions()
  *
  *  Configures subscriptions.
  **/
 private manageSubscriptions() {
-    logger("manageSubscriptions()", "trace")
+    logger("Establishing subscriptions", "debug")
 
     // Unsubscribe:
     unsubscribe()
@@ -882,25 +922,26 @@ private manageSubscriptions() {
     // Subscribe to mode events:
     if (prefLogModeEvents) subscribe(location, "mode", handleModeEvent)
 
-    if (!accessAllAttributes) {
+    if (accessAllAttributes) {
         // Subscribe to device attributes (iterate over each attribute for each device collection in state.deviceAttributes):
+        state.selectedAttr.each { entry ->
+            d = getDeviceObj(entry.key)
+            entry.value.each { attr ->
+                logger("Subscribing to attribute: ${attr}, for device: ${d}", "info")
+                subscribe(d, attr, handleEvent, ["filterEvents": filterEvents])
+            }
+        }
+    }
+    else {
         def devs // dynamic variable holding device collection.
         state.deviceAttributes.each { da ->
             devs = settings."${da.devices}"
             if (devs && (da.attributes)) {
                 da.attributes.each { attr ->
-                    logger("manageSubscriptions(): Subscribing to attribute: ${attr}, for devices: ${da.devices}", "info")
+                    logger("Subscribing to attribute: ${attr}, for devices: ${da.devices}", "info")
                     // There is no need to check if all devices in the collection have the attribute.
                     subscribe(devs, attr, handleEvent, ["filterEvents": filterEvents])
                 }
-            }
-        }
-    } else {
-        state.selectedAttr.each { entry ->
-            d = getDeviceObj(entry.key)
-            entry.value.each { attr ->
-                logger("manageSubscriptions(): Subscribing to attribute: ${attr}, for device: ${d}", "info")
-                subscribe(d, attr, handleEvent, ["filterEvents": filterEvents])
             }
         }
     }
@@ -916,23 +957,15 @@ private logger(msg, level = "debug") {
         case "error":
             if (state.loggingLevelIDE >= 1) log.error msg
             break
-
         case "warn":
             if (state.loggingLevelIDE >= 2) log.warn msg
             break
-
         case "info":
             if (state.loggingLevelIDE >= 3) log.info msg
             break
-
         case "debug":
             if (state.loggingLevelIDE >= 4) log.debug msg
             break
-
-        case "trace":
-            if (state.loggingLevelIDE >= 5) log.trace msg
-            break
-
         default:
             log.debug msg
             break
@@ -951,7 +984,6 @@ private logger(msg, level = "debug") {
  *  Further info: https://docs.influxdata.com/influxdb/v0.10/write_protocols/write_syntax/
  **/
 private String escapeStringForInfluxDB(String str) {
-    //logger("$str", "info")
     if (str) {
         str = str.replaceAll(" ", "\\\\ ") // Escape spaces.
         str = str.replaceAll(",", "\\\\,") // Escape commas.
