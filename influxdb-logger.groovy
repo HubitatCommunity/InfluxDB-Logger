@@ -822,6 +822,7 @@ def postToInfluxDB(data) {
             requestContentType: 'application/json',
             contentType: 'application/json',
             headers: state.headers,
+            ignoreSSLIssues: settings.prefIgnoreSSLIssues,
             body : data
         ]
         asynchttpPost('handleInfluxResponse', postParams)
