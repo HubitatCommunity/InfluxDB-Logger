@@ -854,7 +854,7 @@ def writeQueuedDataToInfluxDb() {
             Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
             if (loggerQueueSize > prefBacklogLimit) {
                 logger("Backlog limit exceeded: dropping ${postCount} events (failsafe)", "warn")
-                listDrop(loggerQueue, postCount)
+                listRemoveCount(loggerQueue, postCount)
             }
         }
         else {
@@ -919,14 +919,14 @@ def handleInfluxResponse(hubResponse, closure) {
         Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
         if (loggerQueueSize > prefBacklogLimit) {
             logger("Backlog limit exceeded: dropping ${postCount} events", "warn")
-            listDrop(loggerQueue, postCount)
+            listRemoveCount(loggerQueue, postCount)
         }
         // Try again
         runIn(60, writeQueuedDataToInfluxDb)
     }
     else {
         logger("Post complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", "info")
-        listDrop(loggerQueue, postCount)
+        listRemoveCount(loggerQueue, postCount)
         if (loggerQueueSize) {
             // More to do
             runIn(1, writeQueuedDataToInfluxDb)
@@ -935,12 +935,11 @@ def handleInfluxResponse(hubResponse, closure) {
 }
 
 /**
- *  listDrop()
+ *  listRemoveCount()
  *
- *  Equivilent of Groovy's list.drop() which isn't implemented in the current version.
+ *  Remove count items from the beginning of the list.
  **/
-private listDrop(list, count) {
-    // Unfortunately list.drop(count) does not work here
+private listRemoveCount(list, count) {
     count.times {
         list.remove(0)
     }
