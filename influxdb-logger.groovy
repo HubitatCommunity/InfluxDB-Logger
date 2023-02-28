@@ -375,10 +375,11 @@ def updated() {
     state.deviceAttributes << [ devices: 'waterSensors', attributes: ['water']]
     state.deviceAttributes << [ devices: 'windowShades', attributes: ['windowShade']]
 
-    subscribe(location, "systemStart", hubRestartHandler)
-
     // Configure device subscriptions:
     manageSubscriptions()
+
+    // Subscribe to system start
+    subscribe(location, "systemStart", hubRestartHandler)
 
     // Flush any pending batch and set up softpoll if requested
     unschedule()
