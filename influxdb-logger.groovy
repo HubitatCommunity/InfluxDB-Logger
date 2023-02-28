@@ -845,9 +845,9 @@ def writeQueuedDataToInfluxDb() {
         Long elapsed = now - state.lastPost
         logger("Post of size ${postCount} events already running (elapsed ${elapsed}ms)", "debug")
 
-        // Failsafe in case handleInfluxResponse doesn't get called for some reason
+        // Failsafe in case handleInfluxResponse doesn't get called for some reason such as reboot
         if (elapsed > 90000) {
-            logger("Post callback timeout - unknown error", "error")
+            logger("Post callback failsafe timeout", "debug")
             state.postCount = 0
 
             // NB: prefBacklogLimit does not exist in older configurations
