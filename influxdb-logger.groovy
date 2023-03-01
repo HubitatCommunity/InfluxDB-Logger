@@ -44,7 +44,7 @@
  *                              Only create a keep alive event (softpoll) when no real event has been seen
  *                              Cleanup and rationalize logging
  *                              Further code cleanup
- *   2023-02-27 Denny Page      Retry failed posts
+ *   2023-02-28 Denny Page      Retry failed posts
  *                              Enhance post logging
  *                              Allow Hub Name and Location tags to be disabled for device events
  *                              Further code cleanup
@@ -99,25 +99,25 @@ def setupMain() {
             )
             input(
                 name: "prefBatchTimeLimit",
-                title: "Batch time limit - maximum number of seconds before writing a batch to InfluxDB (range 1-60)",
+                title: "Batch time limit - maximum number of seconds before writing a batch to InfluxDB (range 1-300)",
                 type: "number",
-                range: "1..60",
+                range: "1..300",
                 defaultValue: "60",
                 required: true
             )
             input(
                 name: "prefBatchSizeLimit",
-                title: "Batch size limit - maximum number of events for writing a batch to InfluxDB (range 1-100)",
+                title: "Batch size limit - maximum number of events in a batch to InfluxDB (range 1-250)",
                 type: "number",
-                range: "1..100",
+                range: "1..250",
                 defaultValue: "50",
                 required: true
             )
             input(
                 name: "prefBacklogLimit",
-                title: "Backlog size limit - maximum number of queued events before dropping failed posts (range 1000-10000)",
+                title: "Backlog size limit - maximum number of queued events before dropping failed posts (range 1000-25000)",
                 type: "number",
-                range: "1000..10000",
+                range: "1000..25000",
                 defaultValue: "5000",
                 required: true
             )
@@ -871,7 +871,7 @@ def writeQueuedDataToInfluxDb() {
     state.lastPost = now
 
     String data = loggerQueue.subList(0, postCount).toArray().join('\n')
-    logger("Posting data to InfluxDB: ${state.uri}, Data: [${data}]", "info")
+    logger("Posting data to InfluxDB: ${state.uri}, Data: [${data}]", "debug")
     try {
         def postParams = [
             uri: state.uri,
@@ -913,7 +913,7 @@ def handleInfluxResponse(hubResponse, closure) {
     state.postCount = 0
 
     if (hubResponse.status >= 400) {
-        logger("Post failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "error")
+        logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "error")
 
         // NB: prefBacklogLimit does not exist in older configurations
         Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
@@ -925,7 +925,7 @@ def handleInfluxResponse(hubResponse, closure) {
         runIn(60, writeQueuedDataToInfluxDb)
     }
     else {
-        logger("Post complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", "info")
+        logger("Post of ${postCount} events complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", "info")
         listRemoveCount(loggerQueue, postCount)
         if (loggerQueueSize) {
             // More to do
@@ -937,7 +937,7 @@ def handleInfluxResponse(hubResponse, closure) {
 /**
  *  listRemoveCount()
  *
- *  Remove count items from the beginning of the list.
+ *  Remove count items from the beginning of a list.
  **/
 private listRemoveCount(list, count) {
     count.times {
