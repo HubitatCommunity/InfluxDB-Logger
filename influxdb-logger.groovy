@@ -1,4 +1,4 @@
-/* groovylint-disable ImplementationAsType, InvertedCondition, LineLength, MethodReturnTypeRequired, MethodSize, NestedBlockDepth, NoDef, UnnecessaryGString, UnnecessaryObjectReferences, UnnecessaryToString, VariableTypeRequired */
+/* groovylint-disable DuplicateListLiteral, DuplicateNumberLiteral, DuplicateStringLiteral, ImplementationAsType, InvertedCondition, LineLength, MethodReturnTypeRequired, MethodSize, NestedBlockDepth, NoDef, UnnecessaryGString, UnnecessaryObjectReferences, UnnecessaryToString, VariableTypeRequired */
 /*****************************************************************************************************************
  *  Source: https://github.com/HubitatCommunity/InfluxDB-Logger
  *
@@ -43,6 +43,10 @@
  *                              Use time since first data value to trigger post rather than periodic timer
  *                              Only create a keep alive event (softpoll) when no real event has been seen
  *                              Cleanup and rationalize logging
+ *                              Further code cleanup
+ *   2023-02-28 Denny Page      Retry failed posts
+ *                              Enhance post logging
+ *                              Allow Hub Name and Location tags to be disabled for device events
  *                              Further code cleanup
  *****************************************************************************************************************/
 
@@ -95,24 +99,33 @@ def setupMain() {
             )
             input(
                 name: "prefBatchTimeLimit",
-                title: "Batch time limit - maximum number of seconds before writing a batch to InfluxDB (range 1-60)",
+                title: "Batch time limit - maximum number of seconds before writing a batch to InfluxDB (range 1-300)",
                 type: "number",
-                range: "1..60",
+                range: "1..300",
                 defaultValue: "60",
                 required: true
             )
             input(
                 name: "prefBatchSizeLimit",
-                title: "Batch size limit - maximum number of pending events before writing a batch to InfluxDB (range 1-100)",
+                title: "Batch size limit - maximum number of events in a batch to InfluxDB (range 1-250)",
                 type: "number",
-                range: "1..100",
+                range: "1..250",
                 defaultValue: "50",
+                required: true
+            )
+            input(
+                name: "prefBacklogLimit",
+                title: "Backlog size limit - maximum number of queued events before dropping failed posts (range 1000-25000)",
+                type: "number",
+                range: "1000..25000",
+                defaultValue: "5000",
                 required: true
             )
         }
 
         section("\n<h3>Device Event Handling:</h3>") {
-            input "filterEvents", "bool", title:"Only post events when the data value changes", defaultValue: true
+            input "includeHubInfo", "bool", title:"Include Hub Name and Hub Location as InfluxDB tags for device events", defaultValue: true
+            input "filterEvents", "bool", title:"Only post device events to InfluxDB when the data value changes", defaultValue: true
 
             input(
                 // NB: Called prefSoftPollingInterval for backward compatibility with prior versions
@@ -199,14 +212,14 @@ def setupMain() {
                 input "volts", "capability.voltageMeasurement", title: "Voltage Meters", multiple: true, required: false
                 input "waterSensors", "capability.waterSensor", title: "Water Sensors", multiple: true, required: false
                 input "windowShades", "capability.windowShade", title: "Window Shades", multiple: true, required: false
-             }
+            }
         }
 
         if (prefSoftPollingInterval != "0") {
             section("System Monitoring:", hideable:true, hidden:true) {
-                input "prefLogModeEvents", "bool", title:"Post Mode Events?", defaultValue: false
-                input "prefLogHubProperties", "bool", title:"Post Hub Properties?", defaultValue: false
-                input "prefLogLocationProperties", "bool", title:"Post Location Properties?", defaultValue: false
+                input "prefLogHubProperties", "bool", title:"Post Hub Properties such as IP and firmware to InfluxDB", defaultValue: false
+                input "prefLogLocationProperties", "bool", title:"Post Location Properties such as sunrise/sunset to InfluxDB", defaultValue: false
+                input "prefLogModeEvents", "bool", title:"Post Mode Events to InfluxDB", defaultValue: false
             }
         }
     }
@@ -281,10 +294,10 @@ def getDeviceObj(id) {
  **/
 def installed() {
     state.installedAt = now()
-    state.loggingLevelIDE = 5
+    state.loggingLevelIDE = 3
     state.loggerQueue = []
     updated()
-    log.info "${app.label}: Installed with settings: ${settings}"
+    log.info "${app.label}: Installed"
 }
 
 /**
@@ -293,7 +306,7 @@ def installed() {
  *  Runs when the app is uninstalled.
  **/
 def uninstalled() {
-    log.info "${app.label}: uninstalled"
+    log.info "${app.label}: Uninstalled"
 }
 
 /**
@@ -307,10 +320,9 @@ def uninstalled() {
  *  Refreshes scheduling and subscriptions.
  **/
 def updated() {
-    logger("updated", "debug")
-
     // Update application name
     app.updateLabel(appName)
+    logger("${app.label}: Updated", "info")
 
     // Update internal state:
     state.loggingLevelIDE = (settings.configLoggingLevelIDE) ? settings.configLoggingLevelIDE.toInteger() : 3
@@ -363,8 +375,11 @@ def updated() {
     state.deviceAttributes << [ devices: 'waterSensors', attributes: ['water']]
     state.deviceAttributes << [ devices: 'windowShades', attributes: ['windowShade']]
 
-    // Configure Subscriptions:
+    // Configure device subscriptions:
     manageSubscriptions()
+
+    // Subscribe to system start
+    subscribe(location, "systemStart", hubRestartHandler)
 
     // Flush any pending batch and set up softpoll if requested
     unschedule()
@@ -399,9 +414,19 @@ def updated() {
     state.remove("writeInterval")
 }
 
-/*****************************************************************************************************************
- *  Event Handlers:
- *****************************************************************************************************************/
+/**
+ *
+ * hubRestartHandler()
+ *
+ * Handle hub restarts.
+**/
+def hubRestartHandler(evt)
+{
+    loggerQueue = state.loggerQueue
+    if (loggerQueue && loggerQueue.size()) {
+        runIn(10, writeQueuedDataToInfluxDb)
+    }
+}
 
 /**
  *  handleModeEvent(evt)
@@ -444,7 +469,10 @@ def handleEvent(evt) {
     String value = escapeStringForInfluxDB(evt.value)
     String valueBinary = ''
 
-    String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName},hubName=${hubName},locationName=${locationName}"
+    String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName}"
+    if (settings.includeHubInfo == null || settings.includeHubInfo) {
+        date += ",hubName=${hubName},locationName=${locationName}"
+    }
 
     // Unit tag and fields depend on the event type:
     //  Most string-valued attributes can be translated to a binary value too.
@@ -643,18 +671,13 @@ def handleEvent(evt) {
     queueToInfluxDb(data)
 }
 
-/*****************************************************************************************************************
- *  Main Commands:
- *****************************************************************************************************************/
-
 /**
  *  softPoll()
  *
- *  NB: This function is called softPoll to maintain backward compatibility wirh prior versions
- *
- *  Re-posts last value to InfluxDB unless an event has already been seen in the last softPollingInterval.
- *
+ *  Re-queues last value to InfluxDB unless an event has already been seen in the last softPollingInterval.
  *  Also calls LogSystemProperties().
+ *
+ *  NB: Function name softPoll must be kept for backward compatibility
  **/
 def softPoll() {
     logger("Keepalive check", "debug")
@@ -721,7 +744,7 @@ def softPoll() {
  *
  *  Generates measurements for hub and location properties.
  **/
-def logSystemProperties() {
+private def logSystemProperties() {
     logger("Logging system properties", "debug")
 
     def locationName = '"' + escapeStringForInfluxDB(location.name) + '"'
@@ -762,7 +785,12 @@ def logSystemProperties() {
     }
 }
 
-def queueToInfluxDb(data) {
+/**
+ *  queueToInfluxDb()
+ *
+ *  Adds events to the InfluxDB queue.
+ **/
+private def queueToInfluxDb(data) {
     loggerQueue = state.loggerQueue
     if (loggerQueue == null) {
         // Failsafe if coming from an old version
@@ -771,51 +799,79 @@ def queueToInfluxDb(data) {
     }
 
     loggerQueue.add(data)
-    if (loggerQueue.size() >= (settings.prefBatchSizeLimit ?: 50)) {
+    // NB: prefBatchSizeLimit does not exist in older configurations
+    Integer prefBatchSizeLimit = settings.prefBatchSizeLimit ?: 50
+    if (loggerQueue.size() >= prefBatchSizeLimit) {
         logger("Maximum queue size reached", "debug")
         writeQueuedDataToInfluxDb()
     }
     else if (loggerQueue.size() == 1) {
         logger("Scheduling batch", "debug")
-        // prefBatchTimeLimit does not exist in older configurations
-        runIn(settings.prefBatchTimeLimit ? settings.prefBatchTimeLimit.toInteger() : 60, writeQueuedDataToInfluxDb)
+        // NB: prefBatchTimeLimit does not exist in older configurations
+        Integer prefBatchTimeLimit = settings.prefBatchTimeLimit ?: 60
+        runIn(prefBatchTimeLimit, writeQueuedDataToInfluxDb)
     }
 }
 
+/**
+ *  writeQueuedDataToInfluxDb()
+ *
+ *  Posts data to InfluxDB queue.
+ *
+ *  NB: Function name writeQueuedDataToInfluxDb must be kept for backward compatibility
+**/
 def writeQueuedDataToInfluxDb() {
     loggerQueue = state.loggerQueue
     if (loggerQueue == null) {
         // Failsafe if coming from an old version
         return
     }
-
-    Integer size = loggerQueue.size()
-    if (size == 0) {
-        logger("No queued data to write to InfluxDB", "debug")
-        return
-    }
-
-    logger("Writing queued data of size ${size}", "debug")
-    String writeData = loggerQueue.toArray().join('\n')
-    postToInfluxDB(writeData)
-    loggerQueue.clear()
-}
-
-/**
- *  postToInfluxDB()
- *
- *  Posts data to InfluxDB.
- *
- **/
-def postToInfluxDB(data) {
     if (state.uri == null) {
         // Failsafe if using an old config
         setupDB()
     }
 
-    logger("postToInfluxDB(): Posting data to InfluxDB: ${state.uri}, Data: [${data}]", "info")
+    Integer loggerQueueSize = loggerQueue.size()
+    logger("Number of events queued for InfluxDB: ${loggerQueueSize}", "debug")
+    if (loggerQueueSize == 0) {
+        return
+    }
 
-    // Hubitat Async http Post
+    // NB: older versions will not have state.postCount set
+    Integer postCount = state.postCount ?: 0
+    Long now = now()
+    if (postCount) {
+        // A post is already running
+        Long elapsed = now - state.lastPost
+        logger("Post of size ${postCount} events already running (elapsed ${elapsed}ms)", "debug")
+
+        // Failsafe in case handleInfluxResponse doesn't get called for some reason such as reboot
+        if (elapsed > 90000) {
+            logger("Post callback failsafe timeout", "debug")
+            state.postCount = 0
+
+            // NB: prefBacklogLimit does not exist in older configurations
+            Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
+            if (loggerQueueSize > prefBacklogLimit) {
+                logger("Backlog limit exceeded: dropping ${postCount} events (failsafe)", "warn")
+                listRemoveCount(loggerQueue, postCount)
+            }
+        }
+        else {
+            // Check again
+            runIn(15, writeQueuedDataToInfluxDb)
+            return
+        }
+    }
+
+    // NB: prefBatchSizeLimit does not exist in older configurations
+    Integer prefBatchSizeLimit = settings.prefBatchSizeLimit ?: 50
+    postCount = loggerQueueSize < prefBatchSizeLimit ? loggerQueueSize : prefBatchSizeLimit
+    state.postCount = postCount
+    state.lastPost = now
+
+    String data = loggerQueue.subList(0, postCount).toArray().join('\n')
+    logger("Posting data to InfluxDB: ${state.uri}, Data: [${data}]", "debug")
     try {
         def postParams = [
             uri: state.uri,
@@ -823,9 +879,11 @@ def postToInfluxDB(data) {
             contentType: 'application/json',
             headers: state.headers,
             ignoreSSLIssues: settings.prefIgnoreSSLIssues,
-            body : data
+            timeout: 60,
+            body: data
         ]
-        asynchttpPost('handleInfluxResponse', postParams)
+        def closure = [ postTime: now ]
+        asynchttpPost('handleInfluxResponse', postParams, closure)
     }
     catch (e) {
         logger("Error creating post to InfluxDB: ${e}", "error")
@@ -835,20 +893,57 @@ def postToInfluxDB(data) {
 /**
  *  handleInfluxResponse()
  *
- *  Handles response from post made in postToInfluxDB().
+ *  Handles response from post made in writeQueuedDataToInfluxDb().
+ *
+ *  NB: Function name handleInfluxResponse must be kept for backward compatibility
  **/
-def handleInfluxResponse(hubResponse, data) {
+def handleInfluxResponse(hubResponse, closure) {
+    loggerQueue = state.loggerQueue
+    if (loggerQueue == null) {
+        // Failsafe if coming from an old version
+        return
+    }
+    Integer loggerQueueSize = loggerQueue.size()
+
+    // NB: Transitioning from older versions will not have closure
+    Double elapsed = (closure) ? (now() - closure.postTime) / 1000 : 0
+
+    // NB: Transitioning from older versions will not have postCount set
+    Integer postCount = state.postCount ?: 0
+    state.postCount = 0
+
     if (hubResponse.status >= 400) {
-        logger("Error posting to InfluxDB: Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "error")
+        logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "error")
+
+        // NB: prefBacklogLimit does not exist in older configurations
+        Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
+        if (loggerQueueSize > prefBacklogLimit) {
+            logger("Backlog limit exceeded: dropping ${postCount} events", "warn")
+            listRemoveCount(loggerQueue, postCount)
+        }
+        // Try again
+        runIn(60, writeQueuedDataToInfluxDb)
     }
     else {
-        logger("Status of post call is: ${hubResponse.status}", "debug")
+        logger("Post of ${postCount} events complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", "info")
+        listRemoveCount(loggerQueue, postCount)
+        if (loggerQueueSize) {
+            // More to do
+            runIn(1, writeQueuedDataToInfluxDb)
+        }
     }
 }
 
-/*****************************************************************************************************************
- *  Private Helper Functions:
- *****************************************************************************************************************/
+/**
+ *  listRemoveCount()
+ *
+ *  Remove count items from the beginning of a list.
+ **/
+private listRemoveCount(list, count) {
+    count.times {
+        list.remove(0)
+    }
+}
 
 /**
  *  setupDB()
@@ -915,7 +1010,9 @@ private manageSubscriptions() {
     unsubscribe()
 
     // Subscribe to mode events:
-    if (prefLogModeEvents) subscribe(location, "mode", handleModeEvent)
+    if (prefLogModeEvents) {
+        subscribe(location, "mode", handleModeEvent)
+    }
 
     if (accessAllAttributes) {
         // Subscribe to device attributes (iterate over each attribute for each device collection in state.deviceAttributes):
