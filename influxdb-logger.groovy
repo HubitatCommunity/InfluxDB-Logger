@@ -139,7 +139,8 @@ def setupMain() {
                     "10" : "10 minutes",
                     "15" : "15 minutes",
                     "30" : "30 minutes",
-                    "60" : "60 minutes"
+                    "60" : "60 minutes",
+                    "180" : "3 hours"
                 ],
                 defaultValue: "15",
                 submitOnChange: true,
@@ -407,6 +408,9 @@ def updated() {
         case 60:
             runEvery1Hour(softPoll)
             break
+        case 180:
+            runEvery3Hours(softPoll)
+            break
     }
 
     // Clean up old state variables
@@ -471,7 +475,7 @@ def handleEvent(evt) {
 
     String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName}"
     if (settings.includeHubInfo == null || settings.includeHubInfo) {
-        date += ",hubName=${hubName},locationName=${locationName}"
+        data += ",hubName=${hubName},locationName=${locationName}"
     }
 
     // Unit tag and fields depend on the event type:
@@ -1015,7 +1019,6 @@ private manageSubscriptions() {
     }
 
     if (accessAllAttributes) {
-        // Subscribe to device attributes (iterate over each attribute for each device collection in state.deviceAttributes):
         state.selectedAttr.each { entry ->
             d = getDeviceObj(entry.key)
             entry.value.each { attr ->
@@ -1025,6 +1028,7 @@ private manageSubscriptions() {
         }
     }
     else {
+        // Subscribe to device attributes (iterate over each attribute for each device collection in state.deviceAttributes):
         def devs // dynamic variable holding device collection.
         state.deviceAttributes.each { da ->
             devs = settings."${da.devices}"

@@ -4,7 +4,7 @@
   "version": "2.4.0",
   "minimumHEVersion": "2.2.9",
   "dateReleased": "2023-02-28",
-  "releaseNotes": "2.4.0:\n Retry failed posts to InfluxDB\n Enhanced post logging\n Allow Hub Name and Location tags to be disabled for device events\n2.3.0:\n Cleanup and rationalize UI\n Use time since first data value to trigger post rather than periodic timer\n Only create a keep alive event (softpoll) when no real event has been seen\n Cleanup and rationalize logging\n2.2.0:\n Allow multiple application instances\n InfluxDB 2 support",
+  "releaseNotes": "2.4.1: Fix critical issue with hub properties in device events\n2.4.0:\n Retry failed posts to InfluxDB\n Enhanced post logging\n Allow Hub Name and Location tags to be disabled for device events\n2.3.0:\n Cleanup and rationalize UI\n Use time since first data value to trigger post rather than periodic timer\n Only create a keep alive event (softpoll) when no real event has been seen\n Cleanup and rationalize logging\n2.2.0:\n Allow multiple application instances\n InfluxDB 2 support",
   "communityLink": "https://community.hubitat.com/t/influxdb-logger/110548",
   "apps": [
     {
