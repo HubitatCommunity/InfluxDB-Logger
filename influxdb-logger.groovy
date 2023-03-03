@@ -125,9 +125,9 @@ def setupMain() {
             )
             input(
                 name: "prefBacklogLimit",
-                title: "Backlog size limit - maximum number of queued events before dropping failed posts (range 0-25000)",
+                title: "Backlog size limit - maximum number of queued events before dropping failed posts (range 1-25000)",
                 type: "number",
-                range: "0..25000",
+                range: "1..25000",
                 defaultValue: "5000",
                 required: true
             )
@@ -892,7 +892,7 @@ def writeQueuedDataToInfluxDb() {
             // NB: prefBacklogLimit does not exist in older configurations
             Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
             if (loggerQueueSize > prefBacklogLimit) {
-                logger("Backlog limit exceeded: dropping ${postCount} events (failsafe)", "error")
+                logger("Backlog limit of ${prefBacklogLimit} events exceeded: dropping ${postCount} events (failsafe)", "error")
                 listRemoveCount(loggerQueue, postCount)
             }
         }
@@ -903,13 +903,14 @@ def writeQueuedDataToInfluxDb() {
         }
     }
 
+    // NB: prefBatchSizeLimit and prefBacklogLimit not exist in older configurations
+    Integer prefBatchSizeLimit = settings.prefBatchSizeLimit ?: 50
+    Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
     // If we have a backlog, log a warning
-    if (loggerQueueSize >= 1000) {
+    if (loggerQueueSize > prefBacklogLimit) {
         logger("Backlog of ${loggerQueueSize} events queued for InfluxDB", "warn")
     }
 
-    // NB: prefBatchSizeLimit does not exist in older configurations
-    Integer prefBatchSizeLimit = settings.prefBatchSizeLimit ?: 50
     postCount = loggerQueueSize < prefBatchSizeLimit ? loggerQueueSize : prefBatchSizeLimit
     state.postCount = postCount
     state.lastPost = timeNow
@@ -961,9 +962,9 @@ def handleInfluxResponse(hubResponse, closure) {
         logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "warn")
 
         // NB: prefBacklogLimit does not exist in older configurations
-        Integer prefBacklogLimit = (settings.prefBacklogLimit != null) ? settings.prefBacklogLimit : 5000
+        Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
         if (loggerQueueSize > prefBacklogLimit) {
-            logger("Backlog limit exceeded: dropping ${postCount} events", "error")
+            logger("Backlog limit of ${prefBacklogLimit} events exceeded: dropping ${postCount} events", "error")
             listRemoveCount(loggerQueue, postCount)
         }
         // Try again
