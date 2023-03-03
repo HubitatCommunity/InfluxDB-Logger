@@ -50,14 +50,14 @@
  *                              Further code cleanup
  *   2023-03-03 Denny Page      Clean up event processing code
  *                              Fix button event handling
- *                              Fix thermostat fan mode event event handling
+ *                              Fix thermostat fan mode event handling
  *                              Fix threeAxis event encoding
  *                              Add device event handling for filters, gas detectors, power source
  *                              Remove handling for non-existent device capabilities
  *                              Move unnecessary info messages to debug
  *                              Disable debug logging of post data which drives hubs into the ground
  *                              Provide info logging of event data to replace post data logging
- *                              Allow backlog to be set to zero
+ *                              Allow backlog to be set as low as 1, allowing bad records to be cleared
  *****************************************************************************************************************/
 
 definition(
