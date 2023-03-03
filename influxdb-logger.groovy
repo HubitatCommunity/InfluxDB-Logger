@@ -961,7 +961,7 @@ def handleInfluxResponse(hubResponse, closure) {
         logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "warn")
 
         // NB: prefBacklogLimit does not exist in older configurations
-        Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
+        Integer prefBacklogLimit = (settings.prefBacklogLimit != null) ? settings.prefBacklogLimit : 5000
         if (loggerQueueSize > prefBacklogLimit) {
             logger("Backlog limit exceeded: dropping ${postCount} events", "error")
             listRemoveCount(loggerQueue, postCount)
