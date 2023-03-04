@@ -48,7 +48,7 @@
  *                              Enhance post logging
  *                              Allow Hub Name and Location tags to be disabled for device events
  *                              Further code cleanup
- *   2023-03-03 Denny Page      Clean up event processing code
+ *   2023-03-04 Denny Page      Clean up event processing code
  *                              Fix button event handling
  *                              Fix thermostat fan mode event handling
  *                              Fix threeAxis event encoding
@@ -894,6 +894,7 @@ def writeQueuedDataToInfluxDb() {
             if (loggerQueueSize > prefBacklogLimit) {
                 logger("Backlog limit of ${prefBacklogLimit} events exceeded: dropping ${postCount} events (failsafe)", "error")
                 listRemoveCount(loggerQueue, postCount)
+                loggerQueueSize = loggerQueue.size()
             }
         }
         else {
@@ -949,34 +950,36 @@ def handleInfluxResponse(hubResponse, closure) {
         // Failsafe if coming from an old version
         return
     }
-    Integer loggerQueueSize = loggerQueue.size()
 
-    // NB: Transitioning from older versions will not have closure
+    // NB: Transitioning from older versions will not have closure set
     Double elapsed = (closure) ? (now() - closure.postTime) / 1000 : 0
-
     // NB: Transitioning from older versions will not have postCount set
     Integer postCount = state.postCount ?: 0
     state.postCount = 0
 
-    if (hubResponse.status >= 400) {
+    if (hubResponse.status < 400) {
+        logger("Post of ${postCount} events complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", "info")
+    }
+    else {
         logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "warn")
 
         // NB: prefBacklogLimit does not exist in older configurations
         Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
-        if (loggerQueueSize > prefBacklogLimit) {
-            logger("Backlog limit of ${prefBacklogLimit} events exceeded: dropping ${postCount} events", "error")
-            listRemoveCount(loggerQueue, postCount)
+        if (loggerQueue.size() <= prefBacklogLimit) {
+            // Try again later
+            runIn(60, writeQueuedDataToInfluxDb)
+            return
         }
-        // Try again
-        runIn(60, writeQueuedDataToInfluxDb)
+
+        logger("Backlog limit of ${prefBacklogLimit} events exceeded: dropping ${postCount} events", "error")
     }
-    else {
-        logger("Post of ${postCount} events complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", "info")
-        listRemoveCount(loggerQueue, postCount)
-        if (loggerQueueSize) {
-            // More to do
-            runIn(1, writeQueuedDataToInfluxDb)
-        }
+
+    // Remove the post from the queue
+    listRemoveCount(loggerQueue, postCount)
+
+    // Go again?
+    if (loggerQueue.size()) {
+        runIn(1, writeQueuedDataToInfluxDb)
     }
 }
 
@@ -1119,7 +1122,7 @@ private logger(msg, level = "debug") {
  *  be escaped using the backslash character \. Backslash characters do not need to be escaped.
  *  Commas and spaces will also need to be escaped for measurements, though equals signs = do not.
  *
- *  Further info: https://docs.influxdata.com/influxdb/v0.10/write_protocols/write_syntax/
+ *  Further info: https://docs.influxdata.com/influxdb/v1.8/write_protocols/line_protocol_reference/
  **/
 private String escapeStringForInfluxDB(String str) {
     if (str == null) {
@@ -1130,7 +1133,6 @@ private String escapeStringForInfluxDB(String str) {
     str = str.replaceAll(",", "\\\\,") // Escape commas.
     str = str.replaceAll("=", "\\\\=") // Escape equal signs.
     str = str.replaceAll("\"", "\\\\\"") // Escape double quotes.
-    //str = str.replaceAll("'", "_")  // Replace apostrophes with underscores.
 
     return str
 }
