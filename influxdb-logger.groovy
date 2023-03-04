@@ -48,6 +48,16 @@
  *                              Enhance post logging
  *                              Allow Hub Name and Location tags to be disabled for device events
  *                              Further code cleanup
+ *   2023-03-04 Denny Page      Clean up event processing code
+ *                              Fix button event handling
+ *                              Fix thermostat fan mode event handling
+ *                              Fix threeAxis event encoding
+ *                              Add device event handling for filters, gas detectors, power source
+ *                              Remove handling for non-existent device capabilities
+ *                              Move unnecessary info messages to debug
+ *                              Disable debug logging of post data which drives hubs into the ground
+ *                              Provide info logging of event data to replace post data logging
+ *                              Allow backlog to be set as low as 1, allowing bad records to be cleared
  *****************************************************************************************************************/
 
 definition(
@@ -115,9 +125,9 @@ def setupMain() {
             )
             input(
                 name: "prefBacklogLimit",
-                title: "Backlog size limit - maximum number of queued events before dropping failed posts (range 1000-25000)",
+                title: "Backlog size limit - maximum number of queued events before dropping failed posts (range 1-25000)",
                 type: "number",
-                range: "1000..25000",
+                range: "1..25000",
                 defaultValue: "5000",
                 required: true
             )
@@ -185,6 +195,8 @@ def setupMain() {
                 input "contacts", "capability.contactSensor", title: "Contact Sensors", multiple: true, required: false
                 input "doorsControllers", "capability.doorControl", title: "Door Controllers", multiple: true, required: false
                 input "energyMeters", "capability.energyMeter", title: "Energy Meters", multiple: true, required: false
+                input "filters", "capability.filterStatus", title: "Filters", multiple: true, required: false
+                input "gasDetectors", "capability.gasDetector", title: "Gas Detectors", multiple: true, required: false
                 input "humidities", "capability.relativeHumidityMeasurement", title: "Humidity Meters", multiple: true, required: false
                 input "illuminances", "capability.illuminanceMeasurement", title: "Illuminance Meters", multiple: true, required: false
                 input "locks", "capability.lock", title: "Locks", multiple: true, required: false
@@ -193,6 +205,7 @@ def setupMain() {
                 input "peds", "capability.stepSensor", title: "Pedometers", multiple: true, required: false
                 input "phMeters", "capability.pHMeasurement", title: "pH Meters", multiple: true, required: false
                 input "powerMeters", "capability.powerMeter", title: "Power Meters", multiple: true, required: false
+                input "powerSources", "capability.powerSources", title: "Power Sources", multiple: true, required: false
                 input "presences", "capability.presenceSensor", title: "Presence Sensors", multiple: true, required: false
                 input "pressures", "capability.pressureMeasurement", title: "Pressure Sensors", multiple: true, required: false
                 input "shockSensors", "capability.shockSensor", title: "Shock Sensors", multiple: true, required: false
@@ -347,6 +360,8 @@ def updated() {
     state.deviceAttributes << [ devices: 'contacts', attributes: ['contact']]
     state.deviceAttributes << [ devices: 'doorsControllers', attributes: ['door']]
     state.deviceAttributes << [ devices: 'energyMeters', attributes: ['energy']]
+    state.deviceAttributes << [ devices: 'filters', attributes: ['filterStatus']]
+    state.deviceAttributes << [ devices: 'gasDetectors', attributes: ['naturalGas']]
     state.deviceAttributes << [ devices: 'humidities', attributes: ['humidity']]
     state.deviceAttributes << [ devices: 'illuminances', attributes: ['illuminance']]
     state.deviceAttributes << [ devices: 'locks', attributes: ['lock']]
@@ -354,7 +369,8 @@ def updated() {
     state.deviceAttributes << [ devices: 'musicPlayers', attributes: ['status', 'level', 'trackDescription', 'trackData', 'mute']]
     state.deviceAttributes << [ devices: 'peds', attributes: ['steps', 'goal']]
     state.deviceAttributes << [ devices: 'phMeters', attributes: ['pH']]
-    state.deviceAttributes << [ devices: 'powerMeters', attributes: ['power', 'voltage', 'current', 'powerFactor']]
+    state.deviceAttributes << [ devices: 'powerMeters', attributes: ['power']]
+    state.deviceAttributes << [ devices: 'powerSources', attributes: ['powerSource']]
     state.deviceAttributes << [ devices: 'presences', attributes: ['presence']]
     state.deviceAttributes << [ devices: 'pressures', attributes: ['pressure']]
     state.deviceAttributes << [ devices: 'shockSensors', attributes: ['shock']]
@@ -367,7 +383,7 @@ def updated() {
     state.deviceAttributes << [ devices: 'switchLevels', attributes: ['level']]
     state.deviceAttributes << [ devices: 'tamperAlerts', attributes: ['tamper']]
     state.deviceAttributes << [ devices: 'temperatures', attributes: ['temperature']]
-    state.deviceAttributes << [ devices: 'thermostats', attributes: ['temperature', 'heatingSetpoint', 'coolingSetpoint', 'thermostatSetpoint', 'thermostatMode', 'thermostatFanMode', 'thermostatOperatingState', 'thermostatSetpointMode', 'scheduledSetpoint', 'optimisation', 'windowFunction']]
+    state.deviceAttributes << [ devices: 'thermostats', attributes: ['temperature', 'heatingSetpoint', 'coolingSetpoint', 'thermostatSetpoint', 'thermostatMode', 'thermostatFanMode', 'thermostatOperatingState', 'thermostatSetpointMode', 'scheduledSetpoint']]
     state.deviceAttributes << [ devices: 'threeAxis', attributes: ['threeAxis']]
     state.deviceAttributes << [ devices: 'touchs', attributes: ['touch']]
     state.deviceAttributes << [ devices: 'uvs', attributes: ['ultravioletIndex']]
@@ -438,7 +454,7 @@ def hubRestartHandler(evt)
  *  Log Mode changes.
  **/
 def handleModeEvent(evt) {
-    logger("Mode changed to: ${evt.value}", "info")
+    logger("Mode changed to: ${evt.value}", "debug")
 
     def locationName = escapeStringForInfluxDB(location.name)
     def mode = '"' + escapeStringForInfluxDB(evt.value) + '"'
@@ -456,222 +472,241 @@ def handleModeEvent(evt) {
  *     represented as binary values (e.g. contact: closed = 1, open = 0)
  **/
 def handleEvent(evt) {
-    logger("Handle Event: $evt.displayName($evt.name:$evt.unit) $evt.value", "info")
+    //logger("Handle Event: ${evt.displayName}(${evt.name}:${evt.unit}) $evt.value", "debug")
+    logger("Handle Event: ${evt}", "debug")
 
-    // Build data string to send to InfluxDB:
+    //
+    // Set up unit/value/valueBinary values
+    //
+    String unit = ''
+    String value = ''
+    String valueBinary = ''
+
+    switch (evt.name) {
+        case 'acceleration':
+            // binary value: active = 1, <any other value> = 0
+            unit = 'acceleration'
+            valueBinary = ('active' == evt.value) ? '1i' : '0i'
+            break
+        case 'alarm':
+            // binary value: <any other value> = 1, off = 0
+            unit = 'alarm'
+            valueBinary = ('off' == evt.value) ? '0i' : '1i'
+            break
+        case 'carbonMonoxide':
+            // binary value: detected = 1, <any other value> = 0
+            unit = 'carbonMonoxide'
+            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            break
+        case 'consumableStatus':
+            // binary value: good = 1, <any other value> = 0
+            unit = 'consumableStatus'
+            valueBinary = ('good' == evt.value) ? '1i' : '0i'
+            break
+        case 'contact':
+            // binary value: closed = 1, <any other value> = 0
+            unit = 'contact'
+            valueBinary = ('closed' == evt.value) ? '1i' : '0i'
+            break
+        case 'door':
+            // binary value: closed = 1, <any other value> = 0
+            unit = 'door'
+            valueBinary = ('closed' == evt.value) ? '1i' : '0i'
+            break
+        case 'filterStatus':
+            // binary value: normal = 1, <any other value> = 0
+            unit = 'filterStatus'
+            valueBinary = ('normal' == evt.value) ? '1i' : '0i'
+            break
+        case 'lock':
+            // binary value: locked = 1, <any other value> = 0
+            unit = 'lock'
+            valueBinary = ('locked' == evt.value) ? '1i' : '0i'
+            break
+        case 'motion':
+            // binary value: active = 1, <any other value> = 0
+            unit = 'motion'
+            valueBinary = ('active' == evt.value) ? '1i' : '0i'
+            break
+        case 'mute':
+            // binary value: muted = 1, <any other value> = 0
+            unit = 'mute'
+            valueBinary = ('muted' == evt.value) ? '1i' : '0i'
+            break
+        case 'naturalGas':
+            // binary value: detected = 1, <any other value> = 0
+            unit = 'naturalGas'
+            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            break
+        case 'powerSource':
+            // binary value: mains = 1, <any other value> = 0
+            unit = 'powerSource'
+            valueBinary = ('mains' == evt.value) ? '1i' : '0i'
+            break
+        case 'presence':
+            // binary value: present = 1, <any other value> = 0
+            unit = 'presence'
+            valueBinary = ('present' == evt.value) ? '1i' : '0i'
+            break
+        case 'shock':
+            // binary value: detected = 1, <any other value> = 0
+            unit = 'shock'
+            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            break
+        case 'sleeping':
+            // binary value: sleeping = 1, <any other value> = 0
+            unit = 'sleeping'
+            valueBinary = ('sleeping' == evt.value) ? '1i' : '0i'
+            break
+        case 'smoke':
+            // binary value: detected = 1, <any other value> = 0
+            unit = 'smoke'
+            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            break
+        case 'sound':
+            // binary value: detected = 1, <any other value> = 0
+            unit = 'sound'
+            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            break
+        case 'switch':
+            // binary value: on = 1, <any other value> = 0
+            unit = 'switch'
+            valueBinary = ('on' == evt.value) ? '1i' : '0i'
+            break
+        case 'tamper':
+            // binary value: detected = 1, <any other value> = 0
+            unit = 'tamper'
+            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            break
+        case 'thermostatMode':
+            // binary value: <any other value> = 1, off = 0
+            unit = 'thermostatMode'
+            valueBinary = ('off' == evt.value) ? '0i' : '1i'
+            break
+        case 'thermostatFanMode':
+            // binary value: <any other value> = 1, auto = 0
+            unit = 'thermostatFanMode'
+            valueBinary = ('auto' == evt.value) ? '0i' : '1i'
+            break
+        case 'thermostatOperatingState':
+            // binary value: heating or cooling = 1, <any other value> = 0
+            unit = 'thermostatOperatingState'
+            valueBinary = ('heating' == evt.value || 'cooling' == evt.value) ? '1i' : '0i'
+            break
+        case 'thermostatSetpointMode':
+            // binary value: followSchedule = 0, <any other value> = 1
+            unit = 'thermostatSetpointMode'
+            valueBinary = ('followSchedule' == evt.value) ? '0i' : '1i'
+            break
+        case 'threeAxis':
+            // threeAxis: Format to x,y,z values
+            unit = 'threeAxis'
+            try {
+                def (_,x,y,z) = (evt.value =~ /^\[x:(-?[0-9]{1,3}),y:(-?[0-9]{1,3}),z:(-?[0-9]{1,3})\]$/)[0]
+                value = "valueX=${x}i,valueY=${y}i,valueZ=${z}i" // values are integers
+            }
+            catch (e) {
+                // value will end up as a string
+                logger("Invalid threeAxis format: ${evt.value}", "warn")
+            }
+            break
+        case 'touch':
+            // binary value: touched = 1, <any other value> = 0
+            unit = 'touch'
+            valueBinary = ('touched' == evt.value) ? '1i' : '0i'
+            break
+        case 'valve':
+            // binary value: open = 1, <any other value> = 0
+            unit = 'valve'
+            valueBinary = ('open' == evt.value) ? '1i' : '0i'
+            break
+        case 'water':
+            // binary value: wet = 1, <any other value> = 0
+            unit = 'water'
+            valueBinary = ('wet' == evt.value) ? '1i' : '0i'
+            break
+        case 'windowShade':
+            // binary value: closed = 1, <any other value> = 0
+            unit = 'windowShade'
+            valueBinary = ('closed' == evt.value) ? '1i' : '0i'
+            break
+
+        // The Mysterious Case of The Button
+        // binary value: released = 0, <any other value> = 1
+        case 'doubleTapped': // This is a strange one one, especially when it comes to softpoll
+        case 'held':
+        case 'pushed':
+            unit = 'button'
+            valueBinary = '1i'
+            break
+        case 'released':
+            unit = 'button'
+            valueBinary = '0i'
+            break
+    }
+
+    if (unit) {
+        // If a unit has been assigned above, but a value has not, create a string value using the escaped string value
+        // in the event. Note that if a value is already assigned in the above switch, it cannot be escaped here.
+        if (!value) {
+            value = '"' + escapeStringForInfluxDB(evt.value) + '"'
+        }
+    }
+    else {
+        // If a unit has not been assigned above, we assign it from the event unit.
+        unit = escapeStringForInfluxDB(evt.unit)
+
+        if (!value) {
+            if (evt.value.isNumber()) {
+                // It's a number, which is generally what we are expecting. Common numerical events such as carbonDioxide,
+                // power, energy, humidity, level, temperature, ultravioletIndex, voltage, etc. are handled here.
+                value = evt.value
+            }
+            else {
+                // It's not a number, which means that this should probably be explicityly handled in the case statement.
+                value = '"' + escapeStringForInfluxDB(evt.value) + '"'
+                logger("Found a string value not explicitly handled: Device Name: ${deviceName}, Event Name: ${evt.name}, Event Value: ${evt.value}", "warn")
+            }
+        }
+    }
+
+    // Build the data string to send to InfluxDB:
     //  Format: <measurement>[,<tag_name>=<tag_value>] field=<field_value>
     //    If value is an integer, it must have a trailing "i"
     //    If value is a string, it must be enclosed in double quotes.
-    String measurement = evt.name
-    // tags:
+
+    // Measurement and device tags
+    String measurement = escapeStringForInfluxDB((evt.name))
     String deviceId = evt?.deviceId?.toString()
     String deviceName = escapeStringForInfluxDB(evt?.displayName)
-    String hubName = escapeStringForInfluxDB(evt?.device?.device?.hub?.name?.toString())
-    String locationName = escapeStringForInfluxDB(location.name)
+    String data = "${measurement},deviceName=${deviceName},deviceId=${deviceId}"
 
-    String unit = escapeStringForInfluxDB(evt.unit)
-    String value = escapeStringForInfluxDB(evt.value)
-    String valueBinary = ''
-
-    String data = "${measurement},deviceId=${deviceId},deviceName=${deviceName}"
+    // Add hub name and location tags if requested
     if (settings.includeHubInfo == null || settings.includeHubInfo) {
+        String hubName = escapeStringForInfluxDB(evt?.device?.device?.hub?.name?.toString())
+        String locationName = escapeStringForInfluxDB(location.name)
         data += ",hubName=${hubName},locationName=${locationName}"
     }
 
-    // Unit tag and fields depend on the event type:
-    //  Most string-valued attributes can be translated to a binary value too.
-    if ('acceleration' == evt.name) { // acceleration: Calculate a binary value (active = 1, inactive = 0)
-        unit = 'acceleration'
-        value = '"' + value + '"'
-        valueBinary = ('active' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
+    // Add the unit and value(s)
+    data += ",unit=${unit} "
+    if (value ==~ /^value.*/) {
+        // Assignment has already been done above (e.g. threeAxis)
+        data += "${value}"
     }
-    else if ('alarm' == evt.name) { // alarm: Calculate a binary value (strobe/siren/both = 1, off = 0)
-        unit = 'alarm'
-        value = '"' + value + '"'
-        valueBinary = ('off' == evt.value) ? '0i' : '1i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('button' == evt.name) { // button: Calculate a binary value (held = 1, pushed = 0)
-        unit = 'button'
-        value = '"' + value + '"'
-        valueBinary = ('pushed' == evt.value) ? '0i' : '1i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('carbonMonoxide' == evt.name) { // carbonMonoxide: Calculate a binary value (detected = 1, clear/tested = 0)
-        unit = 'carbonMonoxide'
-        value = '"' + value + '"'
-        valueBinary = ('detected' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('consumableStatus' == evt.name) { // consumableStatus: Calculate a binary value ("good" = 1, "missing"/"replace"/"maintenance_required"/"order" = 0)
-        unit = 'consumableStatus'
-        value = '"' + value + '"'
-        valueBinary = ('good' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('contact' == evt.name) { // contact: Calculate a binary value (closed = 1, open = 0)
-        unit = 'contact'
-        value = '"' + value + '"'
-        valueBinary = ('closed' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('door' == evt.name) { // door: Calculate a binary value (closed = 1, open/opening/closing/unknown = 0)
-        unit = 'door'
-        value = '"' + value + '"'
-        valueBinary = ('closed' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('lock' == evt.name) { // door: Calculate a binary value (locked = 1, unlocked = 0)
-        unit = 'lock'
-        value = '"' + value + '"'
-        valueBinary = ('locked' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('motion' == evt.name) { // Motion: Calculate a binary value (active = 1, inactive = 0)
-        unit = 'motion'
-        value = '"' + value + '"'
-        valueBinary = ('active' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('mute' == evt.name) { // mute: Calculate a binary value (muted = 1, unmuted = 0)
-        unit = 'mute'
-        value = '"' + value + '"'
-        valueBinary = ('muted' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('presence' == evt.name) { // presence: Calculate a binary value (present = 1, not present = 0)
-        unit = 'presence'
-        value = '"' + value + '"'
-        valueBinary = ('present' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('shock' == evt.name) { // shock: Calculate a binary value (detected = 1, clear = 0)
-        unit = 'shock'
-        value = '"' + value + '"'
-        valueBinary = ('detected' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('sleeping' == evt.name) { // sleeping: Calculate a binary value (sleeping = 1, not sleeping = 0)
-        unit = 'sleeping'
-        value = '"' + value + '"'
-        valueBinary = ('sleeping' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('smoke' == evt.name) { // smoke: Calculate a binary value (detected = 1, clear/tested = 0)
-        unit = 'smoke'
-        value = '"' + value + '"'
-        valueBinary = ('detected' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('sound' == evt.name) { // sound: Calculate a binary value (detected = 1, not detected = 0)
-        unit = 'sound'
-        value = '"' + value + '"'
-        valueBinary = ('detected' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('switch' == evt.name) { // switch: Calculate a binary value (on = 1, off = 0)
-        unit = 'switch'
-        value = '"' + value + '"'
-        valueBinary = ('on' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('tamper' == evt.name) { // tamper: Calculate a binary value (detected = 1, clear = 0)
-        unit = 'tamper'
-        value = '"' + value + '"'
-        valueBinary = ('detected' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('thermostatMode' == evt.name) { // thermostatMode: Calculate a binary value (<any other value> = 1, off = 0)
-        unit = 'thermostatMode'
-        value = '"' + value + '"'
-        valueBinary = ('off' == evt.value) ? '0i' : '1i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('thermostatFanMode' == evt.name) { // thermostatFanMode: Calculate a binary value (<any other value> = 1, off = 0)
-        unit = 'thermostatFanMode'
-        value = '"' + value + '"'
-        valueBinary = ('off' == evt.value) ? '0i' : '1i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('thermostatOperatingState' == evt.name) { // thermostatOperatingState: Calculate a binary value (heating = 1, <any other value> = 0)
-        unit = 'thermostatOperatingState'
-        value = '"' + value + '"'
-        valueBinary = ('heating' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('thermostatSetpointMode' == evt.name) { // thermostatSetpointMode: Calculate a binary value (followSchedule = 0, <any other value> = 1)
-        unit = 'thermostatSetpointMode'
-        value = '"' + value + '"'
-        valueBinary = ('followSchedule' == evt.value) ? '0i' : '1i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('threeAxis' == evt.name) { // threeAxis: Format to x,y,z values.
-        unit = 'threeAxis'
-        def valueXYZ = evt.value.split(",")
-        def valueX = valueXYZ[0]
-        def valueY = valueXYZ[1]
-        def valueZ = valueXYZ[2]
-        data += ",unit=${unit} valueX=${valueX}i,valueY=${valueY}i,valueZ=${valueZ}i" // values are integers.
-    }
-    else if ('touch' == evt.name) { // touch: Calculate a binary value (touched = 1, "" = 0)
-        unit = 'touch'
-        value = '"' + value + '"'
-        valueBinary = ('touched' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('optimisation' == evt.name) { // optimisation: Calculate a binary value (active = 1, inactive = 0)
-        unit = 'optimisation'
-        value = '"' + value + '"'
-        valueBinary = ('active' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('windowFunction' == evt.name) { // windowFunction: Calculate a binary value (active = 1, inactive = 0)
-        unit = 'windowFunction'
-        value = '"' + value + '"'
-        valueBinary = ('active' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('touch' == evt.name) { // touch: Calculate a binary value (touched = 1, <any other value> = 0)
-        unit = 'touch'
-        value = '"' + value + '"'
-        valueBinary = ('touched' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('water' == evt.name) { // water: Calculate a binary value (wet = 1, dry = 0)
-        unit = 'water'
-        value = '"' + value + '"'
-        valueBinary = ('wet' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('windowShade' == evt.name) { // windowShade: Calculate a binary value (closed = 1, <any other value> = 0)
-        unit = 'windowShade'
-        value = '"' + value + '"'
-        valueBinary = ('closed' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    else if ('valve' == evt.name) { // switch: Calculate a binary value (open = 1, closed = 0)
-        unit = 'valve'
-        value = '"' + value + '"'
-        valueBinary = ('open' == evt.value) ? '1i' : '0i'
-        data += ",unit=${unit} value=${value},valueBinary=${valueBinary}"
-    }
-    // Catch any other event with a string value that hasn't been handled:
-    else if (evt.value ==~ /.*[^0-9\.,-].*/) { // match if any characters are not digits, period, comma, or hyphen.
-        logger("Found a string value not explicitly handled: Device Name: ${deviceName}, Event Name: ${evt.name}, Value: ${evt.value}", "warn")
-        value = '"' + value + '"'
-        data += ",unit=${unit} value=${value}"
-    }
-    // Catch any other general numerical event (carbonDioxide, power, energy, humidity, level, temperature, ultravioletIndex, voltage, etc).
     else {
-        data += ",unit=${unit} value=${value}"
+        data += "value=${value}"
+    }
+    if (valueBinary) {
+        data += ",valueBinary=${valueBinary}"
     }
 
-    // add event timestamp
-    long eventTimestamp = evt?.unixTime * 1e6   // Time is in milliseconds, InfluxDB expects nanoseconds
+    // Add the event timestamp
+    long eventTimestamp = evt?.unixTime * 1e6 // milliseconds to nanoseconds
     data += " ${eventTimestamp}"
 
-    // Queue data for later write to InfluxDB
+    // Add event to the queue for InfluxDB
+    logger("Queued event: ${data}", "info")
     queueToInfluxDb(data)
 }
 
@@ -698,7 +733,7 @@ def softPoll() {
             entry.value.each { attr ->
                 if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
                     if (d.latestState(attr).date.time <= lastTime) {
-                        logger("Keep alive for device ${d}, attribute ${attr}", "info")
+                        logger("Keep alive for device ${d}, attribute ${attr}", "debug")
                         // Send fake event to handleEvent():
                         handleEvent([
                             name: attr,
@@ -723,7 +758,7 @@ def softPoll() {
                     da.attributes.each { attr ->
                         if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
                             if (d.latestState(attr).date.time <= lastTime) {
-                                logger("Keep alive for device ${d}, attribute ${attr}", "info")
+                                logger("Keep alive for device ${d}, attribute ${attr}", "debug")
                                 // Send fake event to handleEvent():
                                 handleEvent([
                                     name: attr,
@@ -843,11 +878,11 @@ def writeQueuedDataToInfluxDb() {
 
     // NB: older versions will not have state.postCount set
     Integer postCount = state.postCount ?: 0
-    Long now = now()
+    Long timeNow = now()
     if (postCount) {
         // A post is already running
-        Long elapsed = now - state.lastPost
-        logger("Post of size ${postCount} events already running (elapsed ${elapsed}ms)", "debug")
+        Long elapsed = timeNow - state.lastPost
+        logger("Post of ${postCount} events already running (elapsed ${elapsed}ms)", "debug")
 
         // Failsafe in case handleInfluxResponse doesn't get called for some reason such as reboot
         if (elapsed > 90000) {
@@ -857,8 +892,9 @@ def writeQueuedDataToInfluxDb() {
             // NB: prefBacklogLimit does not exist in older configurations
             Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
             if (loggerQueueSize > prefBacklogLimit) {
-                logger("Backlog limit exceeded: dropping ${postCount} events (failsafe)", "warn")
+                logger("Backlog limit of ${prefBacklogLimit} events exceeded: dropping ${postCount} events (failsafe)", "error")
                 listRemoveCount(loggerQueue, postCount)
+                loggerQueueSize = loggerQueue.size()
             }
         }
         else {
@@ -868,14 +904,21 @@ def writeQueuedDataToInfluxDb() {
         }
     }
 
-    // NB: prefBatchSizeLimit does not exist in older configurations
+    // NB: prefBatchSizeLimit and prefBacklogLimit not exist in older configurations
     Integer prefBatchSizeLimit = settings.prefBatchSizeLimit ?: 50
+    Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
+    // If we have a backlog, log a warning
+    if (loggerQueueSize > prefBacklogLimit) {
+        logger("Backlog of ${loggerQueueSize} events queued for InfluxDB", "warn")
+    }
+
     postCount = loggerQueueSize < prefBatchSizeLimit ? loggerQueueSize : prefBatchSizeLimit
     state.postCount = postCount
-    state.lastPost = now
+    state.lastPost = timeNow
 
     String data = loggerQueue.subList(0, postCount).toArray().join('\n')
-    logger("Posting data to InfluxDB: ${state.uri}, Data: [${data}]", "debug")
+    // Uncommenting the following line will eventually drive your hub into the ground. Don't do it.
+    // logger("Posting data to InfluxDB: ${state.uri}, Data: [${data}]", "debug")
     try {
         def postParams = [
             uri: state.uri,
@@ -886,7 +929,7 @@ def writeQueuedDataToInfluxDb() {
             timeout: 60,
             body: data
         ]
-        def closure = [ postTime: now ]
+        def closure = [ postTime: timeNow ]
         asynchttpPost('handleInfluxResponse', postParams, closure)
     }
     catch (e) {
@@ -907,34 +950,36 @@ def handleInfluxResponse(hubResponse, closure) {
         // Failsafe if coming from an old version
         return
     }
-    Integer loggerQueueSize = loggerQueue.size()
 
-    // NB: Transitioning from older versions will not have closure
+    // NB: Transitioning from older versions will not have closure set
     Double elapsed = (closure) ? (now() - closure.postTime) / 1000 : 0
-
     // NB: Transitioning from older versions will not have postCount set
     Integer postCount = state.postCount ?: 0
     state.postCount = 0
 
-    if (hubResponse.status >= 400) {
-        logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "error")
+    if (hubResponse.status < 400) {
+        logger("Post of ${postCount} events complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", "info")
+    }
+    else {
+        logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "warn")
 
         // NB: prefBacklogLimit does not exist in older configurations
         Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
-        if (loggerQueueSize > prefBacklogLimit) {
-            logger("Backlog limit exceeded: dropping ${postCount} events", "warn")
-            listRemoveCount(loggerQueue, postCount)
+        if (loggerQueue.size() <= prefBacklogLimit) {
+            // Try again later
+            runIn(60, writeQueuedDataToInfluxDb)
+            return
         }
-        // Try again
-        runIn(60, writeQueuedDataToInfluxDb)
+
+        logger("Backlog limit of ${prefBacklogLimit} events exceeded: dropping ${postCount} events", "error")
     }
-    else {
-        logger("Post of ${postCount} events complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", "info")
-        listRemoveCount(loggerQueue, postCount)
-        if (loggerQueueSize) {
-            // More to do
-            runIn(1, writeQueuedDataToInfluxDb)
-        }
+
+    // Remove the post from the queue
+    listRemoveCount(loggerQueue, postCount)
+
+    // Go again?
+    if (loggerQueue.size()) {
+        runIn(1, writeQueuedDataToInfluxDb)
     }
 }
 
@@ -1077,19 +1122,18 @@ private logger(msg, level = "debug") {
  *  be escaped using the backslash character \. Backslash characters do not need to be escaped.
  *  Commas and spaces will also need to be escaped for measurements, though equals signs = do not.
  *
- *  Further info: https://docs.influxdata.com/influxdb/v0.10/write_protocols/write_syntax/
+ *  Further info: https://docs.influxdata.com/influxdb/v1.8/write_protocols/line_protocol_reference/
  **/
 private String escapeStringForInfluxDB(String str) {
-    if (str) {
-        str = str.replaceAll(" ", "\\\\ ") // Escape spaces.
-        str = str.replaceAll(",", "\\\\,") // Escape commas.
-        str = str.replaceAll("=", "\\\\=") // Escape equal signs.
-        str = str.replaceAll("\"", "\\\\\"") // Escape double quotes.
-        //str = str.replaceAll("'", "_")  // Replace apostrophes with underscores.
+    if (str == null) {
+        return 'null'
     }
-    else {
-        str = 'null'
-    }
+
+    str = str.replaceAll(" ", "\\\\ ") // Escape spaces.
+    str = str.replaceAll(",", "\\\\,") // Escape commas.
+    str = str.replaceAll("=", "\\\\=") // Escape equal signs.
+    str = str.replaceAll("\"", "\\\\\"") // Escape double quotes.
+
     return str
 }
 
