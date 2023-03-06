@@ -193,9 +193,11 @@ def setupMain() {
                 input "colors", "capability.colorControl", title: "Color Controllers", multiple: true, required: false
                 input "consumables", "capability.consumable", title: "Consumables", multiple: true, required: false
                 input "contacts", "capability.contactSensor", title: "Contact Sensors", multiple: true, required: false
+                input "currentMeters", "capability.currentMeter", title: "Current Meters", multiple:true, required: false
                 input "doorsControllers", "capability.doorControl", title: "Door Controllers", multiple: true, required: false
                 input "energyMeters", "capability.energyMeter", title: "Energy Meters", multiple: true, required: false
                 input "filters", "capability.filterStatus", title: "Filters", multiple: true, required: false
+                input "flowMeters", "capability.liquidFlowRate", title: "Liquid Flow Meters", multiple: true, required: false
                 input "gasDetectors", "capability.gasDetector", title: "Gas Detectors", multiple: true, required: false
                 input "humidities", "capability.relativeHumidityMeasurement", title: "Humidity Meters", multiple: true, required: false
                 input "illuminances", "capability.illuminanceMeasurement", title: "Illuminance Meters", multiple: true, required: false
@@ -358,9 +360,11 @@ def updated() {
     state.deviceAttributes << [ devices: 'colors', attributes: ['hue', 'saturation', 'color']]
     state.deviceAttributes << [ devices: 'consumables', attributes: ['consumableStatus']]
     state.deviceAttributes << [ devices: 'contacts', attributes: ['contact']]
+    state.deviceAttributes << [ devices: 'currentMeters', attributes: ['amperage']]
     state.deviceAttributes << [ devices: 'doorsControllers', attributes: ['door']]
     state.deviceAttributes << [ devices: 'energyMeters', attributes: ['energy']]
     state.deviceAttributes << [ devices: 'filters', attributes: ['filterStatus']]
+    state.deviceAttributes << [ devices: 'flowMeters', attributes: ['rate']]
     state.deviceAttributes << [ devices: 'gasDetectors', attributes: ['naturalGas']]
     state.deviceAttributes << [ devices: 'humidities', attributes: ['humidity']]
     state.deviceAttributes << [ devices: 'illuminances', attributes: ['illuminance']]
@@ -1136,4 +1140,3 @@ private String escapeStringForInfluxDB(String str) {
 
     return str
 }
-
