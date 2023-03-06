@@ -197,10 +197,10 @@ def setupMain() {
                 input "doorsControllers", "capability.doorControl", title: "Door Controllers", multiple: true, required: false
                 input "energyMeters", "capability.energyMeter", title: "Energy Meters", multiple: true, required: false
                 input "filters", "capability.filterStatus", title: "Filters", multiple: true, required: false
-                input "flowMeters", "capability.liquidFlowRate", title: "Liquid Flow Meters", multiple: true, required: false
                 input "gasDetectors", "capability.gasDetector", title: "Gas Detectors", multiple: true, required: false
                 input "humidities", "capability.relativeHumidityMeasurement", title: "Humidity Meters", multiple: true, required: false
                 input "illuminances", "capability.illuminanceMeasurement", title: "Illuminance Meters", multiple: true, required: false
+                input "liquidFlowMeters", "capability.liquidFlowRate", title: "Liquid Flow Meters", multiple: true, required: false
                 input "locks", "capability.lock", title: "Locks", multiple: true, required: false
                 input "motions", "capability.motionSensor", title: "Motion Sensors", multiple: true, required: false
                 input "musicPlayers", "capability.musicPlayer", title: "Music Players", multiple: true, required: false
@@ -364,10 +364,10 @@ def updated() {
     state.deviceAttributes << [ devices: 'doorsControllers', attributes: ['door']]
     state.deviceAttributes << [ devices: 'energyMeters', attributes: ['energy']]
     state.deviceAttributes << [ devices: 'filters', attributes: ['filterStatus']]
-    state.deviceAttributes << [ devices: 'flowMeters', attributes: ['rate']]
     state.deviceAttributes << [ devices: 'gasDetectors', attributes: ['naturalGas']]
     state.deviceAttributes << [ devices: 'humidities', attributes: ['humidity']]
     state.deviceAttributes << [ devices: 'illuminances', attributes: ['illuminance']]
+    state.deviceAttributes << [ devices: 'liquidFlowMeters', attributes: ['rate']]
     state.deviceAttributes << [ devices: 'locks', attributes: ['lock']]
     state.deviceAttributes << [ devices: 'motions', attributes: ['motion']]
     state.deviceAttributes << [ devices: 'musicPlayers', attributes: ['status', 'level', 'trackDescription', 'trackData', 'mute']]
