@@ -140,7 +140,7 @@ def setupMain() {
             input(
                 // NB: Called prefSoftPollingInterval for backward compatibility with prior versions
                 name: "prefSoftPollingInterval",
-                title: "Post keep alive events (aka softpoll) - re-post last value if a new event has not occurred in this time",
+                title: "Post keep alive events (aka softpoll) - check every softpoll interval and re-post last value if a new event has not occurred in this time",
                 type: "enum",
                 options: [
                     "0" : "disabled",
@@ -335,7 +335,7 @@ def uninstalled() {
  **/
 def updated() {
     // Update application name
-    app.updateLabel(appName)
+    app.updateLabel(settings.appName)
     logger("${app.label}: Updated", "info")
 
     // Update internal state:
@@ -444,7 +444,7 @@ def hubRestartHandler(evt)
 {
     loggerQueue = state.loggerQueue
     if (loggerQueue && loggerQueue.size()) {
-        runIn(10, writeQueuedDataToInfluxDb)
+        runIn(60, writeQueuedDataToInfluxDb)
     }
 }
 
@@ -723,7 +723,7 @@ def softPoll() {
 
     logSystemProperties()
 
-    long timeNow = new Date().time
+    long timeNow = now()
     long lastTime = timeNow - (state.softPollingInterval * 60000)
 
     if (accessAllAttributes) {
@@ -787,7 +787,7 @@ private def logSystemProperties() {
     logger("Logging system properties", "debug")
 
     def locationName = '"' + escapeStringForInfluxDB(location.name) + '"'
-    long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds when pushed to InfluxDB
+    long timeNow = now() * 1e6 // Time is in milliseconds, needs to be in nanoseconds when pushed to InfluxDB
 
     // Location Properties:
     if (prefLogLocationProperties) {
