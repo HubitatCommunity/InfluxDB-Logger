@@ -94,12 +94,14 @@ import groovy.transform.Field
     "colors": [ title: "Color Controllers", capability: "colorControl", attributes: ['hue', 'saturation', 'color'] ],
     "consumables": [ title: "Consumables", capability: "consumable", attributes: ['consumableStatus'] ],
     "contacts": [ title: "Contact Sensors", capability: "contactSensor", attributes: ['contact'] ],
+    "currentMeters": [ title: "Current Meters", capability: "currentMeter", attributes: ['amperage'] ],
     "doorsControllers": [ title: "Door Controllers", capability: "doorControl", attributes: ['door'] ],
     "energyMeters": [ title: "Energy Meters", capability: "energyMeter", attributes: ['energy'] ],
     "filters": [ title: "Filters", capability: "filterStatus", attributes: ['filterStatus'] ],
     "gasDetectors": [ title: "Gas Detectors", capability: "gasDetector", attributes: ['naturalGas'] ],
     "humidities": [ title: "Humidity Meters", capability: "relativeHumidityMeasurement", attributes: ['humidity'] ],
     "illuminances": [ title: "Illuminance Meters", capability: "illuminanceMeasurement", attributes: ['illuminance'] ],
+    "liquidFlowMeters": [ title: "Liquid Flow Meters", capability: "liquidFlowRate", attributes: ['rate'] ],
     "locks": [ title: "Locks", capability: "lock", attributes: ['lock'] ],
     "motions": [ title: "Motion Sensors", capability: "motionSensor", attributes: ['motion'] ],
     "musicPlayers": [ title: "Music Players", capability: "musicPlayer", attributes: ['status', 'level', 'trackDescription', 'trackData', 'mute'] ],
@@ -233,7 +235,7 @@ def setupMain() {
                 }
             }
             else {
-                deviceTypeMap.each() { name, entry ->
+                deviceTypeMap.each { name, entry ->
                     input "${name}", "capability.${entry.capability}", title: "${entry.title}", multiple: true, required: false
                 }
             }
@@ -339,8 +341,8 @@ def updated() {
 
     // Create device subscriptions
     def deviceAttrMap = getDeviceAttrMap()
-    deviceAttrMap.each() { device, attrList ->
-        attrList.each() { attr ->
+    deviceAttrMap.each { device, attrList ->
+        attrList.each { attr ->
             logger("Subscribing to ${device}: ${attr}", "info")
             subscribe(device, attr, handleEvent, ["filterEvents": filterEvents])
         }
@@ -417,10 +419,10 @@ private getDeviceAttrMap() {
         }
     }
     else {
-        deviceTypeMap.each() { name, entry ->
+        deviceTypeMap.each { name, entry ->
             deviceList = settings."${name}"
             if (deviceList) {
-                deviceList.each{ device ->
+                deviceList.each { device ->
                     deviceAttrMap[device] = entry.attributes
                 }
             }
@@ -431,13 +433,11 @@ private getDeviceAttrMap() {
 }
 
 /**
- *
  * hubRestartHandler()
  *
  * Handle hub restarts.
 **/
-def hubRestartHandler(evt)
-{
+def hubRestartHandler(evt) {
     if (state.loggerQueue?.size()) {
         runIn(60, writeQueuedDataToInfluxDb)
     }
@@ -720,8 +720,8 @@ def softPoll() {
     // Create the list
     Long timeNow = now()
     def eventList = []
-    deviceAttrMap.each() { device, attrList ->
-        attrList.each() { attr ->
+    deviceAttrMap.each { device, attrList ->
+        attrList.each { attr ->
             if (device.latestState(attr)) {
                 Integer activityMinutes = (timeNow - device.latestState(attr).date.time) / 60000
                 if (activityMinutes > state.softPollingInterval) {
@@ -742,7 +742,7 @@ def softPoll() {
                 }
             }
             else {
-               logger("Keep alive for device ${device}(${attr}) suppressed - last activity never", "debug")
+                logger("Keep alive for device ${device}(${attr}) suppressed - last activity never", "debug")
             }
         }
     }
@@ -772,7 +772,7 @@ def handleModeEvent(evt) {
  *
  *  Generates measurements for hub and location properties.
  **/
-private def logSystemProperties() {
+private logSystemProperties() {
     logger("Logging system properties", "debug")
 
     def locationName = '"' + escapeStringForInfluxDB(location.name) + '"'
@@ -818,16 +818,16 @@ private def logSystemProperties() {
  *
  *  Adds events to the InfluxDB queue.
  **/
-private def queueToInfluxDb(eventList) {
+private queueToInfluxDb(eventList) {
     if (state.loggerQueue == null) {
         // Failsafe if coming from an old version
         state.loggerQueue = []
     }
-    priorLoggerQueueSize = state.loggerQueue.size()
 
     // Add the data to the queue
+    priorLoggerQueueSize = state.loggerQueue.size()
     state.loggerQueue += eventList
-    eventList.each() { event ->
+    eventList.each { event ->
         logger("Queued event: ${event}", "info")
     }
 
