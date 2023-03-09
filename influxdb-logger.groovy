@@ -64,7 +64,7 @@
  *                              Enhance queueToInfluxDb to accept a list of events
  *                              Complete rewrite of softpoll (take advantage of queueToInfluxDb lists)
  *                              Remove unnecessary state variables
- *                              Don't re-schedule batch post on based on batch size, wait for existing timer
+ *                              Don't re-schedule batch post based on batch size, wait for existing timer
  *****************************************************************************************************************/
 
 definition(
@@ -822,7 +822,6 @@ private def logSystemProperties() {
  *  Adds events to the InfluxDB queue.
  **/
 private def queueToInfluxDb(eventList) {
-    Long begin = now()
     if (state.loggerQueue == null) {
         // Failsafe if coming from an old version
         state.loggerQueue = []
@@ -830,7 +829,7 @@ private def queueToInfluxDb(eventList) {
     priorLoggerQueueSize = state.loggerQueue.size()
 
     // Add the data to the queue
-    state.loggerQueue = state.loggerQueue.plus(eventList)
+    state.loggerQueue += eventList
     eventList.each() { event ->
         logger("Queued event: ${event}", "info")
     }
@@ -842,7 +841,6 @@ private def queueToInfluxDb(eventList) {
         Integer prefBatchTimeLimit = settings.prefBatchTimeLimit ?: 60
         runIn(prefBatchTimeLimit, writeQueuedDataToInfluxDb)
     }
-    logElapsed("queueToInfluxDb complete", begin)
 }
 
 /**
@@ -889,7 +887,8 @@ def writeQueuedDataToInfluxDb() {
         Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
         if (loggerQueueSize > prefBacklogLimit) {
             logger("Backlog limit of ${prefBacklogLimit} events exceeded: dropping ${postCount} events (failsafe)", "error")
-            listRemoveCount(state.loggerQueue, postCount)
+
+            state.loggerQueue = state.loggerQueue.drop(postCount)
             loggerQueueSize -= postCount
         }
     }
@@ -961,7 +960,7 @@ def handleInfluxResponse(hubResponse, closure) {
     }
 
     // Remove the post from the queue
-    listRemoveCount(state.loggerQueue, postCount)
+    state.loggerQueue = state.loggerQueue.drop(postCount)
 
     // Go again?
     if (state.loggerQueue.size()) {
@@ -1020,17 +1019,6 @@ private setupDB() {
     state.remove("databasePass")
     state.remove("databaseUser")
     state.remove("path")
-}
-
-/**
- *  listRemoveCount()
- *
- *  Remove count items from the beginning of a list.
- **/
-private listRemoveCount(list, count) {
-    count.times {
-        list.remove(0)
-    }
 }
 
 /**
