@@ -82,9 +82,6 @@ definition(
 
 import groovy.transform.Field
 
-// Lock for loggerQueue
-@Field static java.util.concurrent.Semaphore loggerQueueLock = new java.util.concurrent.Semaphore(1)
-
 // Device type list
 @Field static final deviceTypeMap = [
     "accelerometers": [ title: "Accelerometers", capability: "accelerationSensor", attributes: ['acceleration'] ],
