@@ -65,6 +65,7 @@
  *                              Complete rewrite of softpoll (take advantage of queueToInfluxDb lists)
  *                              Remove unnecessary state variables
  *                              Don't re-schedule batch post based on batch size, wait for existing timer
+ *                              Improve backlog warnings
  *****************************************************************************************************************/
 
 definition(
@@ -883,8 +884,7 @@ def writeQueuedDataToInfluxDb() {
         // NB: prefBacklogLimit does not exist in older configurations
         Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
         if (loggerQueueSize > prefBacklogLimit) {
-            logger("Backlog limit of ${prefBacklogLimit} events exceeded: dropping ${postCount} events (failsafe)", "error")
-
+            logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${prefBacklogLimit}: dropping ${postCount} events (failsafe)", "error")
             state.loggerQueue = state.loggerQueue.drop(postCount)
             loggerQueueSize -= postCount
         }
@@ -948,12 +948,16 @@ def handleInfluxResponse(hubResponse, closure) {
         // NB: prefBacklogLimit does not exist in older configurations
         Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
         if (state.loggerQueue.size() <= prefBacklogLimit) {
+            if (state.loggerQueue.size() > postCount) {
+                logger("Backlog of ${state.loggerQueue.size()} events", "warn")
+            }
+
             // Try again later
             runIn(60, writeQueuedDataToInfluxDb)
             return
         }
 
-        logger("Backlog limit of ${prefBacklogLimit} events exceeded: dropping ${postCount} events", "error")
+        logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${prefBacklogLimit}: dropping ${postCount} events", "error")
     }
 
     // Remove the post from the queue
