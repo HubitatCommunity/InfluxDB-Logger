@@ -6,6 +6,7 @@
  *
  *  Forked from: https://github.com/codersaur/SmartThings/tree/master/smartapps/influxdb-logger
  *  Original Author: David Lomas (codersaur)
+ *  Previous Author: Joshua Marker (tooluser)
  *  Hubitat Elevation version maintained by HubitatCommunity (https://github.com/HubitatCommunity/InfluxDB-Logger)
  *
  *  License:
@@ -66,14 +67,15 @@
  *                              Remove unnecessary state variables
  *                              Don't re-schedule batch post based on batch size, wait for existing timer
  *                              Improve backlog warnings
+ *                              Lower backlog limits to prevent issues with app database size
  *****************************************************************************************************************/
 
 definition(
     name: "InfluxDB Logger",
     namespace: "nowhereville",
-    author: "Joshua Marker (tooluser)",
+    author: "Hubitat Community",
     description: "Log device states to InfluxDB",
-    category: "My Apps",
+    category: "Utility",
     importUrl: "https://raw.githubusercontent.com/HubitatCommunity/InfluxDB-Logger/master/influxdb-logger.groovy",
     iconUrl: "",
     iconX2Url: "",
@@ -184,9 +186,9 @@ def setupMain() {
             )
             input(
                 name: "prefBacklogLimit",
-                title: "Backlog size limit - maximum number of queued events before dropping failed posts (range 1-25000)",
+                title: "Backlog size limit - maximum number of queued events before dropping failed posts (range 1-10000)",
                 type: "number",
-                range: "1..25000",
+                range: "1..10000",
                 defaultValue: "5000",
                 required: true
             )
