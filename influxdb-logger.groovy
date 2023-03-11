@@ -68,6 +68,7 @@
  *                              Don't re-schedule batch post based on batch size, wait for existing timer
  *                              Improve backlog warnings
  *                              Lower backlog limits to prevent issues with app database size
+ *                              Normalize Hub information logging
  *****************************************************************************************************************/
 
 definition(
@@ -194,10 +195,7 @@ def setupMain() {
             )
         }
 
-        section("\n<h3>Device Event Handling:</h3>") {
-            input "includeHubInfo", "bool", title:"Include Hub Name and Hub Location as InfluxDB tags for device events", defaultValue: true
-            input "filterEvents", "bool", title:"Only post device events to InfluxDB when the data value changes", defaultValue: true
-
+        section("\n<h3>Event Handling:</h3>") {
             input(
                 // NB: Called prefSoftPollingInterval for backward compatibility with prior versions
                 name: "prefSoftPollingInterval",
@@ -217,6 +215,11 @@ def setupMain() {
                 submitOnChange: true,
                 required: true
             )
+            if (prefSoftPollingInterval != "0") {
+                input "prefPostHubInfo", "bool", title:"Post Hub information (IP, firmware, uptime, mode, sunrise/sunset) to InfluxDB", defaultValue: false
+            }
+            input "includeHubInfo", "bool", title:"Include Hub Name as a tag for device events", defaultValue: true
+            input "filterEvents", "bool", title:"Only post device events to InfluxDB when the data value changes", defaultValue: true
         }
 
         section("Devices To Monitor:", hideable:true, hidden:false) {
@@ -241,14 +244,6 @@ def setupMain() {
                 deviceTypeMap.each { name, entry ->
                     input "${name}", "capability.${entry.capability}", title: "${entry.title}", multiple: true, required: false
                 }
-            }
-        }
-
-        if (prefSoftPollingInterval != "0") {
-            section("System Monitoring:", hideable:true, hidden:true) {
-                input "prefLogHubProperties", "bool", title:"Post Hub Properties such as IP and firmware to InfluxDB", defaultValue: false
-                input "prefLogLocationProperties", "bool", title:"Post Location Properties such as sunrise/sunset to InfluxDB", defaultValue: false
-                input "prefLogModeEvents", "bool", title:"Post Mode Events to InfluxDB", defaultValue: false
             }
         }
     }
@@ -355,7 +350,7 @@ def updated() {
     subscribe(location, "systemStart", hubRestartHandler)
 
     // Subscribe to mode events if requested
-    if (prefLogModeEvents) {
+    if (prefPostHubInfo) {
         subscribe(location, "mode", handleModeEvent)
     }
 
@@ -441,6 +436,10 @@ private getDeviceAttrMap() {
  * Handle hub restarts.
 **/
 def hubRestartHandler(evt) {
+    if (prefPostHubInfo) {
+        handleModeEvent(null)
+    }
+
     if (state.loggerQueue?.size()) {
         runIn(60, writeQueuedDataToInfluxDb)
     }
@@ -659,11 +658,10 @@ private String encodeDeviceEvent(evt) {
     String deviceName = escapeStringForInfluxDB(evt.displayName)
     String data = "${measurement},deviceName=${deviceName},deviceId=${deviceId}"
 
-    // Add hub name and location tags if requested
+    // Add hub name (location) tag if requested
     if (settings.includeHubInfo == null || settings.includeHubInfo) {
-        String hubName = escapeStringForInfluxDB(evt.device?.device?.hub?.name?.toString())
-        String locationName = escapeStringForInfluxDB(location.name)
-        data += ",hubName=${hubName},locationName=${locationName}"
+        String hubName = escapeStringForInfluxDB(location.name)
+        data += ",hubName=\"${hubName}\""
     }
 
     // Add the unit and value(s)
@@ -696,11 +694,47 @@ private String encodeDeviceEvent(evt) {
  *     represented as binary values (e.g. contact: closed = 1, open = 0)
  **/
 def handleEvent(evt) {
-    //logger("Handle Event: ${evt.displayName}(${evt.name}:${evt.unit}) $evt.value", "debug")
     logger("Handle Event: ${evt}", "debug")
 
     // Encode the event
     data = encodeDeviceEvent(evt)
+
+    // Add event to the queue for InfluxDB
+    queueToInfluxDb([data])
+}
+
+/**
+ *  encodeHubInfo(evt)
+ *
+ *  Build a Hub Information record.
+ **/
+private String encodeHubInfo(evt) {
+    String hubName = escapeStringForInfluxDB(location.name)
+    String localIP = escapeStringForInfluxDB(location.hub.localIP)
+    String firmwareVersion = escapeStringForInfluxDB(location.hub.firmwareVersionString)
+    String upTime = escapeStringForInfluxDB(location.hub.uptime.toString())
+    String mode = escapeStringForInfluxDB(evt?.value ? evt.value : location.getMode())
+
+    def times = getSunriseAndSunset()
+    String sunriseTime = escapeStringForInfluxDB(times.sunrise.format("HH:mm", location.timeZone))
+    String sunsetTime = escapeStringForInfluxDB(times.sunset.format("HH:mm", location.timeZone))
+
+    Long eventTimestamp = (evt?.unixTime ? evt.unixTime : now()) * 1e6       // Time is in milliseconds, but InfluxDB expects nanoseconds
+
+    String data = "_hubInfo,hubName=\"${hubName}\" localIP=\"${localIP}\",firmwareVersion=\"${firmwareVersion}\",upTime=\"${upTime}\",mode=\"${mode}\",sunriseTime=\"${sunriseTime}\",sunsetTime=\"${sunsetTime}\" ${eventTimestamp}"
+    return data
+}
+
+/**
+ *  handleModeEvent(evt)
+ *
+ *  Log hub information when mode changes.
+ **/
+def handleModeEvent(evt) {
+    logger("Handle Mode Event: ${evt}", "debug")
+
+    // Encode the event
+    data = encodeHubInfo(evt)
 
     // Add event to the queue for InfluxDB
     queueToInfluxDb([data])
@@ -749,71 +783,12 @@ def softPoll() {
             }
         }
     }
+
+    // Add a hub information record
+    eventList.add(encodeHubInfo(null))
+
+    // Queue the events
     queueToInfluxDb(eventList)
-
-    // FIXME This should not be included in every softpoll
-    logSystemProperties()
-}
-
-/**
- *  handleModeEvent(evt)
- *
- *  Log Mode changes.
- **/
-def handleModeEvent(evt) {
-    logger("Mode changed to: ${evt.value}", "debug")
-
-    def locationName = escapeStringForInfluxDB(location.name)
-    def mode = '"' + escapeStringForInfluxDB(evt.value) + '"'
-    long eventTimestamp = evt.unixTime * 1e6       // Time is in milliseconds, but InfluxDB expects nanoseconds
-    def data = "_stMode,locationName=${locationName} mode=${mode} ${eventTimestamp}"
-    queueToInfluxDb([data])
-}
-
-/**
- *  logSystemProperties()
- *
- *  Generates measurements for hub and location properties.
- **/
-private logSystemProperties() {
-    logger("Logging system properties", "debug")
-
-    def locationName = '"' + escapeStringForInfluxDB(location.name) + '"'
-    long timeNow = now() * 1e6 // Time is in milliseconds, needs to be in nanoseconds when pushed to InfluxDB
-
-    // Location Properties:
-    if (prefLogLocationProperties) {
-        try {
-            def tz = '"' + escapeStringForInfluxDB(location.timeZone.ID.toString()) + '"'
-            def mode = '"' + escapeStringForInfluxDB(location.mode) + '"'
-            def times = getSunriseAndSunset()
-            def srt = '"' + times.sunrise.format("HH:mm", location.timeZone) + '"'
-            def sst = '"' + times.sunset.format("HH:mm", location.timeZone) + '"'
-
-            def data = "_heLocation,locationName=${locationName},latitude=${location.latitude},longitude=${location.longitude},timeZone=${tz} mode=${mode},sunriseTime=${srt},sunsetTime=${sst} ${timeNow}"
-            queueToInfluxDb([data])
-        }
-        catch (e) {
-            logger("Unable to log Location properties: ${e}", "error")
-        }
-    }
-
-    // Hub Properties:
-    if (prefLogHubProperties) {
-        location.hubs.each { h ->
-            try {
-                def hubName = '"' + escapeStringForInfluxDB(h.name.toString()) + '"'
-                def hubIP = '"' + escapeStringForInfluxDB(h.localIP.toString()) + '"'
-                def firmwareVersion =  '"' + escapeStringForInfluxDB(h.firmwareVersionString) + '"'
-
-                def data = "_heHub,locationName=${locationName},hubName=${hubName},hubIP=${hubIP} firmwareVersion=${firmwareVersion} ${timeNow}"
-                queueToInfluxDb([data])
-            }
-            catch (e) {
-                logger("Unable to log Hub properties: ${e}", "error")
-            }
-        }
-    }
 }
 
 /**
