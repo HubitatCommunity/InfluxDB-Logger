@@ -751,6 +751,16 @@ void handleModeEvent(evt) {
 void softPoll() {
     logger("Keepalive check", "debug")
 
+    // Migrate old settings if needed
+    if (settings.prefPostHubInfo == null) {
+        if (settings.prefLogHubProperties || settings.prefLogLocationProperties || settings.prefLogModeEvents) {
+            app.updateSetting("prefPostHubInfo", (Boolean) true)
+        }
+        app.removeSetting("prefLogHubProperties")
+        app.removeSetting("prefLogLocationProperties")
+        app.removeSetting("prefLogModeEvents")
+    }
+
     // Get the map
     Map<String,List> deviceAttrMap = getDeviceAttrMap()
 
@@ -784,8 +794,10 @@ void softPoll() {
         }
     }
 
-    // Add a hub information record
-    eventList.add(encodeHubInfo(null))
+    // Add a hub information record if requested
+    if (settings.prefPostHubInfo) {
+        eventList.add(encodeHubInfo(null))
+    }
 
     // Queue the events
     queueToInfluxDb(eventList)
