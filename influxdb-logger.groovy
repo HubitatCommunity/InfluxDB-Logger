@@ -1066,4 +1066,3 @@ private String escapeStringForInfluxDB(String str) {
 
     return str
 }
-
