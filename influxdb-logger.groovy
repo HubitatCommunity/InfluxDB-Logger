@@ -1,4 +1,4 @@
-/* groovylint-disable DuplicateListLiteral, DuplicateNumberLiteral, DuplicateStringLiteral, ImplementationAsType, InvertedCondition, LineLength, MethodReturnTypeRequired, MethodSize, NestedBlockDepth, NoDef, UnnecessaryGString, UnnecessaryObjectReferences, UnnecessaryToString, VariableTypeRequired */
+/* groovylint-disable DuplicateListLiteral, DuplicateNumberLiteral, DuplicateStringLiteral, LineLength, MethodParameterTypeRequired, MethodReturnTypeRequired, MethodSize, NestedBlockDepth, NoDef, PublicMethodsBeforeNonPublicMethods, UnnecessaryGString, UnnecessaryGetter, UnnecessaryObjectReferences, UnusedMethodParameter, VariableTypeRequired */
 /*****************************************************************************************************************
  *  Source: https://github.com/HubitatCommunity/InfluxDB-Logger
  *
@@ -88,51 +88,51 @@ import groovy.transform.Field
 
 // Device type list
 @Field static final deviceTypeMap = [
-    "accelerometers": [ title: "Accelerometers", capability: "accelerationSensor", attributes: ['acceleration'] ],
-    "alarms": [ title: "Alarms", capability: "alarm", attributes: ['alarm'] ],
-    "batteries": [ title: "Batteries", capability: "battery", attributes: ['battery'] ],
-    "beacons": [ title: "Beacons", capability: "beacon", attributes: ['presence'] ],
-    "buttons": [ title: "Buttons", capability: "pushableButton", attributes: ['pushed', 'doubleTapped', 'held', 'released'] ],
-    "cos": [ title: "Carbon Monoxide Detectors", capability: "carbonMonoxideDetector", attributes: ['carbonMonoxide'] ],
-    "co2s": [ title: "Carbon Dioxide Detectors", capability: "carbonDioxideMeasurement", attributes: ['carbonDioxide'] ],
-    "colors": [ title: "Color Controllers", capability: "colorControl", attributes: ['hue', 'saturation', 'color'] ],
-    "consumables": [ title: "Consumables", capability: "consumable", attributes: ['consumableStatus'] ],
-    "contacts": [ title: "Contact Sensors", capability: "contactSensor", attributes: ['contact'] ],
-    "currentMeters": [ title: "Current Meters", capability: "currentMeter", attributes: ['amperage'] ],
-    "doorsControllers": [ title: "Door Controllers", capability: "doorControl", attributes: ['door'] ],
-    "energyMeters": [ title: "Energy Meters", capability: "energyMeter", attributes: ['energy'] ],
-    "filters": [ title: "Filters", capability: "filterStatus", attributes: ['filterStatus'] ],
-    "gasDetectors": [ title: "Gas Detectors", capability: "gasDetector", attributes: ['naturalGas'] ],
-    "humidities": [ title: "Humidity Meters", capability: "relativeHumidityMeasurement", attributes: ['humidity'] ],
-    "illuminances": [ title: "Illuminance Meters", capability: "illuminanceMeasurement", attributes: ['illuminance'] ],
-    "liquidFlowMeters": [ title: "Liquid Flow Meters", capability: "liquidFlowRate", attributes: ['rate'] ],
-    "locks": [ title: "Locks", capability: "lock", attributes: ['lock'] ],
-    "motions": [ title: "Motion Sensors", capability: "motionSensor", attributes: ['motion'] ],
-    "musicPlayers": [ title: "Music Players", capability: "musicPlayer", attributes: ['status', 'level', 'trackDescription', 'trackData', 'mute'] ],
-    "peds": [ title: "Pedometers", capability: "stepSensor", attributes: ['steps', 'goal'] ],
-    "phMeters": [ title: "pH Meters", capability: "pHMeasurement", attributes: ['pH'] ],
-    "powerMeters": [ title: "Power Meters", capability: "powerMeter", attributes: ['power'] ],
-    "powerSources": [ title: "Power Sources", capability: "powerSources", attributes: ['powerSource'] ],
-    "presences": [ title: "Presence Sensors", capability: "presenceSensor", attributes: ['presence'] ],
-    "pressures": [ title: "Pressure Sensors", capability: "pressureMeasurement", attributes: ['pressure'] ],
-    "shockSensors": [ title: "Shock Sensors", capability: "shockSensor", attributes: ['shock'] ],
-    "signalStrengthMeters": [ title: "Signal Strength Meters", capability: "signalStrength", attributes: ['lqi', 'rssi'] ],
-    "sleepSensors": [ title: "Sleep Sensors", capability: "sleepSensor", attributes: ['sleeping'] ],
-    "smokeDetectors": [ title: "Smoke Detectors", capability: "smokeDetector", attributes: ['smoke'] ],
-    "soundSensors": [ title: "Sound Sensors", capability: "soundSensor", attributes: ['sound'] ],
-    "spls": [ title: "Sound Pressure Level Sensors", capability: "soundPressureLevel", attributes: ['soundPressureLevel'] ],
-    "switches": [ title: "Switches", capability: "switch", attributes: ['switch'] ],
-    "switchLevels": [ title: "Switch Levels", capability: "switchLevel", attributes: ['level'] ],
-    "tamperAlerts": [ title: "Tamper Alerts", capability: "tamperAlert", attributes: ['tamper'] ],
-    "temperatures": [ title: "Temperature Sensors", capability: "temperatureMeasurement", attributes: ['temperature'] ],
-    "thermostats": [ title: "Thermostats", capability: "thermostat", attributes: ['temperature', 'heatingSetpoint', 'coolingSetpoint', 'thermostatSetpoint', 'thermostatMode', 'thermostatFanMode', 'thermostatOperatingState', 'thermostatSetpointMode', 'scheduledSetpoint'] ],
-    "threeAxis": [ title: "Three-axis (Orientation) Sensors", capability: "threeAxis", attributes: ['threeAxis'] ],
-    "touchs": [ title: "Touch Sensors", capability: "touchSensor", attributes: ['touch'] ],
-    "uvs": [ title: "UV Sensors", capability: "ultravioletIndex", attributes: ['ultravioletIndex'] ],
-    "valves": [ title: "Valves", capability: "valve", attributes: ['contact'] ],
-    "volts": [ title: "Voltage Meters", capability: "voltageMeasurement", attributes: ['voltage'] ],
-    "waterSensors": [ title: "Water Sensors", capability: "waterSensor", attributes: ['water'] ],
-    "windowShades": [ title: "Window Shades", capability: "windowShade", attributes: ['windowShade'] ]
+    'accelerometers': [ title: 'Accelerometers', capability: 'accelerationSensor', attributes: ['acceleration'] ],
+    'alarms': [ title: 'Alarms', capability: 'alarm', attributes: ['alarm'] ],
+    'batteries': [ title: 'Batteries', capability: 'battery', attributes: ['battery'] ],
+    'beacons': [ title: 'Beacons', capability: 'beacon', attributes: ['presence'] ],
+    'buttons': [ title: 'Buttons', capability: 'pushableButton', attributes: ['pushed', 'doubleTapped', 'held', 'released'] ],
+    'cos': [ title: 'Carbon Monoxide Detectors', capability: 'carbonMonoxideDetector', attributes: ['carbonMonoxide'] ],
+    'co2s': [ title: 'Carbon Dioxide Detectors', capability: 'carbonDioxideMeasurement', attributes: ['carbonDioxide'] ],
+    'colors': [ title: 'Color Controllers', capability: 'colorControl', attributes: ['hue', 'saturation', 'color'] ],
+    'consumables': [ title: 'Consumables', capability: 'consumable', attributes: ['consumableStatus'] ],
+    'contacts': [ title: 'Contact Sensors', capability: 'contactSensor', attributes: ['contact'] ],
+    'currentMeters': [ title: 'Current Meters', capability: 'currentMeter', attributes: ['amperage'] ],
+    'doorsControllers': [ title: 'Door Controllers', capability: 'doorControl', attributes: ['door'] ],
+    'energyMeters': [ title: 'Energy Meters', capability: 'energyMeter', attributes: ['energy'] ],
+    'filters': [ title: 'Filters', capability: 'filterStatus', attributes: ['filterStatus'] ],
+    'gasDetectors': [ title: 'Gas Detectors', capability: 'gasDetector', attributes: ['naturalGas'] ],
+    'humidities': [ title: 'Humidity Meters', capability: 'relativeHumidityMeasurement', attributes: ['humidity'] ],
+    'illuminances': [ title: 'Illuminance Meters', capability: 'illuminanceMeasurement', attributes: ['illuminance'] ],
+    'liquidFlowMeters': [ title: 'Liquid Flow Meters', capability: 'liquidFlowRate', attributes: ['rate'] ],
+    'locks': [ title: 'Locks', capability: 'lock', attributes: ['lock'] ],
+    'motions': [ title: 'Motion Sensors', capability: 'motionSensor', attributes: ['motion'] ],
+    'musicPlayers': [ title: 'Music Players', capability: 'musicPlayer', attributes: ['status', 'level', 'trackDescription', 'trackData', 'mute'] ],
+    'peds': [ title: 'Pedometers', capability: 'stepSensor', attributes: ['steps', 'goal'] ],
+    'phMeters': [ title: 'pH Meters', capability: 'pHMeasurement', attributes: ['pH'] ],
+    'powerMeters': [ title: 'Power Meters', capability: 'powerMeter', attributes: ['power'] ],
+    'powerSources': [ title: 'Power Sources', capability: 'powerSources', attributes: ['powerSource'] ],
+    'presences': [ title: 'Presence Sensors', capability: 'presenceSensor', attributes: ['presence'] ],
+    'pressures': [ title: 'Pressure Sensors', capability: 'pressureMeasurement', attributes: ['pressure'] ],
+    'shockSensors': [ title: 'Shock Sensors', capability: 'shockSensor', attributes: ['shock'] ],
+    'signalStrengthMeters': [ title: 'Signal Strength Meters', capability: 'signalStrength', attributes: ['lqi', 'rssi'] ],
+    'sleepSensors': [ title: 'Sleep Sensors', capability: 'sleepSensor', attributes: ['sleeping'] ],
+    'smokeDetectors': [ title: 'Smoke Detectors', capability: 'smokeDetector', attributes: ['smoke'] ],
+    'soundSensors': [ title: 'Sound Sensors', capability: 'soundSensor', attributes: ['sound'] ],
+    'spls': [ title: 'Sound Pressure Level Sensors', capability: 'soundPressureLevel', attributes: ['soundPressureLevel'] ],
+    'switches': [ title: 'Switches', capability: 'switch', attributes: ['switch'] ],
+    'switchLevels': [ title: 'Switch Levels', capability: 'switchLevel', attributes: ['level'] ],
+    'tamperAlerts': [ title: 'Tamper Alerts', capability: 'tamperAlert', attributes: ['tamper'] ],
+    'temperatures': [ title: 'Temperature Sensors', capability: 'temperatureMeasurement', attributes: ['temperature'] ],
+    'thermostats': [ title: 'Thermostats', capability: 'thermostat', attributes: ['temperature', 'heatingSetpoint', 'coolingSetpoint', 'thermostatSetpoint', 'thermostatMode', 'thermostatFanMode', 'thermostatOperatingState', 'thermostatSetpointMode', 'scheduledSetpoint'] ],
+    'threeAxis': [ title: 'Three-axis (Orientation) Sensors', capability: 'threeAxis', attributes: ['threeAxis'] ],
+    'touchs': [ title: 'Touch Sensors', capability: 'touchSensor', attributes: ['touch'] ],
+    'uvs': [ title: 'UV Sensors', capability: 'ultravioletIndex', attributes: ['ultravioletIndex'] ],
+    'valves': [ title: 'Valves', capability: 'valve', attributes: ['contact'] ],
+    'volts': [ title: 'Voltage Meters', capability: 'voltageMeasurement', attributes: ['voltage'] ],
+    'waterSensors': [ title: 'Water Sensors', capability: 'waterSensor', attributes: ['water'] ],
+    'windowShades': [ title: 'Window Shades', capability: 'windowShade', attributes: ['windowShade'] ]
 ]
 
 preferences {
@@ -305,7 +305,7 @@ def connectionPage() {
  *
  *  Runs when the app is first installed.
  **/
-def installed() {
+void installed() {
     state.installedAt = now()
     state.loggerQueue = []
     updated()
@@ -317,7 +317,7 @@ def installed() {
  *
  *  Runs when the app is uninstalled.
  **/
-def uninstalled() {
+void uninstalled() {
     log.info "${app.label}: Uninstalled"
 }
 
@@ -326,7 +326,7 @@ def uninstalled() {
  *
  *  Runs when app settings are changed.
  **/
-def updated() {
+void updated() {
     // Update application name
     app.updateLabel(settings.appName)
     logger("${app.label}: Updated", "info")
@@ -435,7 +435,7 @@ private getDeviceAttrMap() {
  *
  * Handle hub restarts.
 **/
-def hubRestartHandler(evt) {
+void hubRestartHandler(evt) {
     if (prefPostHubInfo) {
         handleModeEvent(null)
     }
@@ -465,117 +465,117 @@ private String encodeDeviceEvent(evt) {
         case 'acceleration':
             // binary value: active = 1, <any other value> = 0
             unit = 'acceleration'
-            valueBinary = ('active' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'active') ? '1i' : '0i'
             break
         case 'alarm':
             // binary value: <any other value> = 1, off = 0
             unit = 'alarm'
-            valueBinary = ('off' == evt.value) ? '0i' : '1i'
+            valueBinary = (evt.value == 'off') ? '0i' : '1i'
             break
         case 'carbonMonoxide':
             // binary value: detected = 1, <any other value> = 0
             unit = 'carbonMonoxide'
-            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'consumableStatus':
             // binary value: good = 1, <any other value> = 0
             unit = 'consumableStatus'
-            valueBinary = ('good' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'good') ? '1i' : '0i'
             break
         case 'contact':
             // binary value: closed = 1, <any other value> = 0
             unit = 'contact'
-            valueBinary = ('closed' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'closed') ? '1i' : '0i'
             break
         case 'door':
             // binary value: closed = 1, <any other value> = 0
             unit = 'door'
-            valueBinary = ('closed' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'closed') ? '1i' : '0i'
             break
         case 'filterStatus':
             // binary value: normal = 1, <any other value> = 0
             unit = 'filterStatus'
-            valueBinary = ('normal' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'normal') ? '1i' : '0i'
             break
         case 'lock':
             // binary value: locked = 1, <any other value> = 0
             unit = 'lock'
-            valueBinary = ('locked' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'locked') ? '1i' : '0i'
             break
         case 'motion':
             // binary value: active = 1, <any other value> = 0
             unit = 'motion'
-            valueBinary = ('active' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'active') ? '1i' : '0i'
             break
         case 'mute':
             // binary value: muted = 1, <any other value> = 0
             unit = 'mute'
-            valueBinary = ('muted' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'muted') ? '1i' : '0i'
             break
         case 'naturalGas':
             // binary value: detected = 1, <any other value> = 0
             unit = 'naturalGas'
-            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'powerSource':
             // binary value: mains = 1, <any other value> = 0
             unit = 'powerSource'
-            valueBinary = ('mains' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'mains') ? '1i' : '0i'
             break
         case 'presence':
             // binary value: present = 1, <any other value> = 0
             unit = 'presence'
-            valueBinary = ('present' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'present') ? '1i' : '0i'
             break
         case 'shock':
             // binary value: detected = 1, <any other value> = 0
             unit = 'shock'
-            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'sleeping':
             // binary value: sleeping = 1, <any other value> = 0
             unit = 'sleeping'
-            valueBinary = ('sleeping' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'sleeping') ? '1i' : '0i'
             break
         case 'smoke':
             // binary value: detected = 1, <any other value> = 0
             unit = 'smoke'
-            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'sound':
             // binary value: detected = 1, <any other value> = 0
             unit = 'sound'
-            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'switch':
             // binary value: on = 1, <any other value> = 0
             unit = 'switch'
-            valueBinary = ('on' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'on') ? '1i' : '0i'
             break
         case 'tamper':
             // binary value: detected = 1, <any other value> = 0
             unit = 'tamper'
-            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'thermostatMode':
             // binary value: <any other value> = 1, off = 0
             unit = 'thermostatMode'
-            valueBinary = ('off' == evt.value) ? '0i' : '1i'
+            valueBinary = (evt.value == 'off') ? '0i' : '1i'
             break
         case 'thermostatFanMode':
             // binary value: <any other value> = 1, auto = 0
             unit = 'thermostatFanMode'
-            valueBinary = ('auto' == evt.value) ? '0i' : '1i'
+            valueBinary = (evt.value == 'auto') ? '0i' : '1i'
             break
         case 'thermostatOperatingState':
             // binary value: heating or cooling = 1, <any other value> = 0
             unit = 'thermostatOperatingState'
-            valueBinary = ('heating' == evt.value || 'cooling' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'heating' || evt.value == 'cooling') ? '1i' : '0i'
             break
         case 'thermostatSetpointMode':
             // binary value: followSchedule = 0, <any other value> = 1
             unit = 'thermostatSetpointMode'
-            valueBinary = ('followSchedule' == evt.value) ? '0i' : '1i'
+            valueBinary = (evt.value == 'followSchedule') ? '0i' : '1i'
             break
         case 'threeAxis':
             // threeAxis: Format to x,y,z values
@@ -592,22 +592,22 @@ private String encodeDeviceEvent(evt) {
         case 'touch':
             // binary value: touched = 1, <any other value> = 0
             unit = 'touch'
-            valueBinary = ('touched' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'touched') ? '1i' : '0i'
             break
         case 'valve':
             // binary value: open = 1, <any other value> = 0
             unit = 'valve'
-            valueBinary = ('open' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'open') ? '1i' : '0i'
             break
         case 'water':
             // binary value: wet = 1, <any other value> = 0
             unit = 'water'
-            valueBinary = ('wet' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'wet') ? '1i' : '0i'
             break
         case 'windowShade':
             // binary value: closed = 1, <any other value> = 0
             unit = 'windowShade'
-            valueBinary = ('closed' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'closed') ? '1i' : '0i'
             break
 
         // The Mysterious Case of The Button
@@ -654,7 +654,7 @@ private String encodeDeviceEvent(evt) {
     //    If value is an integer, it must have a trailing "i"
     //    If value is a string, it must be enclosed in double quotes.
     String measurement = escapeStringForInfluxDB((evt.name))
-    String deviceId = evt.deviceId.toString()
+    String deviceId = evt.deviceId
     String deviceName = escapeStringForInfluxDB(evt.displayName)
     String data = "${measurement},deviceName=${deviceName},deviceId=${deviceId}"
 
@@ -693,7 +693,7 @@ private String encodeDeviceEvent(evt) {
  *   - Calculates logical binary values where string values can be
  *     represented as binary values (e.g. contact: closed = 1, open = 0)
  **/
-def handleEvent(evt) {
+void handleEvent(evt) {
     logger("Handle Event: ${evt}", "debug")
 
     // Encode the event
@@ -730,7 +730,7 @@ private String encodeHubInfo(evt) {
  *
  *  Log hub information when mode changes.
  **/
-def handleModeEvent(evt) {
+void handleModeEvent(evt) {
     logger("Handle Mode Event: ${evt}", "debug")
 
     // Encode the event
@@ -748,7 +748,7 @@ def handleModeEvent(evt) {
  *
  *  NB: Function name softPoll must be kept for backward compatibility
  **/
-def softPoll() {
+void softPoll() {
     logger("Keepalive check", "debug")
 
     // Get the map
@@ -796,7 +796,7 @@ def softPoll() {
  *
  *  Adds events to the InfluxDB queue.
  **/
-private queueToInfluxDb(eventList) {
+private void queueToInfluxDb(eventList) {
     if (state.loggerQueue == null) {
         // Failsafe if coming from an old version
         state.loggerQueue = []
@@ -825,7 +825,7 @@ private queueToInfluxDb(eventList) {
  *
  *  NB: Function name writeQueuedDataToInfluxDb must be kept for backward compatibility
 **/
-def writeQueuedDataToInfluxDb() {
+void writeQueuedDataToInfluxDb() {
     if (state.loggerQueue == null) {
         // Failsafe if coming from an old version
         return
@@ -904,7 +904,7 @@ def writeQueuedDataToInfluxDb() {
  *
  *  NB: Function name handleInfluxResponse must be kept for backward compatibility
  **/
-def handleInfluxResponse(hubResponse, closure) {
+void handleInfluxResponse(hubResponse, closure) {
     if (state.loggerQueue == null) {
         // Failsafe if coming from an old version
         return
@@ -951,7 +951,7 @@ def handleInfluxResponse(hubResponse, closure) {
  *
  *  Set up the database uri and header state variables.
  **/
-private setupDB() {
+private void setupDB() {
     String uri
     def headers = [:]
 
@@ -978,7 +978,7 @@ private setupDB() {
     if (settings.prefAuthType == null || settings.prefAuthType == "basic") {
         if (settings.prefDatabaseUser && settings.prefDatabasePass) {
             def userpass = "${settings.prefDatabaseUser}:${settings.prefDatabasePass}"
-            headers.put("Authorization", "Basic " + userpass.bytes.encodeBase64().toString())
+            headers.put("Authorization", "Basic " + userpass.bytes.encodeBase64())
         }
     }
     else if (settings.prefAuthType == "token") {
@@ -1004,7 +1004,7 @@ private setupDB() {
  *
  *  Wrapper function for all logging.
  **/
-private logger(msg, level = "debug") {
+private void logger(msg, level = "debug") {
     // Default value of 2 is "warn"
     Integer loggingLevel = settings.configLoggingLevelIDE != null ? settings.configLoggingLevelIDE.toInteger() : 2
 
