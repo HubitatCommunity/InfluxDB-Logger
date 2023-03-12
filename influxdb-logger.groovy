@@ -397,6 +397,9 @@ void updated() {
     state.remove("queuedData")
     state.remove("selectedAttr")
     state.remove("writeInterval")
+    app.removeSetting("prefLogHubProperties")
+    app.removeSetting("prefLogLocationProperties")
+    app.removeSetting("prefLogModeEvents")
 }
 
 /**
@@ -754,9 +757,6 @@ void softPoll() {
     // Migration: Old configurations will not have prefPostHubInfo set
     if (settings.prefPostHubInfo == null) {
         app.updateSetting("prefPostHubInfo", (Boolean) (settings.prefLogHubProperties || settings.prefLogLocationProperties || settings.prefLogModeEvents))
-        app.removeSetting("prefLogHubProperties")
-        app.removeSetting("prefLogLocationProperties")
-        app.removeSetting("prefLogModeEvents")
     }
 
     // Get the map
