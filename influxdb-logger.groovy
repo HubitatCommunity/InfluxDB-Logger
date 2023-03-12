@@ -751,11 +751,9 @@ void handleModeEvent(evt) {
 void softPoll() {
     logger("Keepalive check", "debug")
 
-    // Migrate old settings if needed
+    // Migration: Old configurations will not have prefPostHubInfo set
     if (settings.prefPostHubInfo == null) {
-        if (settings.prefLogHubProperties || settings.prefLogLocationProperties || settings.prefLogModeEvents) {
-            app.updateSetting("prefPostHubInfo", (Boolean) true)
-        }
+        app.updateSetting("prefPostHubInfo", (Boolean) (settings.prefLogHubProperties || settings.prefLogLocationProperties || settings.prefLogModeEvents))
         app.removeSetting("prefLogHubProperties")
         app.removeSetting("prefLogLocationProperties")
         app.removeSetting("prefLogModeEvents")
@@ -853,6 +851,16 @@ void writeQueuedDataToInfluxDb() {
         return
     }
 
+    // Migration: Old configurations will not have prefBacklogLimit or prefBatchSizeLimit set
+    if (settings.prefBacklogLimit == null)
+    {
+        app.updateSetting("prefBacklogLimit", (Long) 5000)
+    }
+    if (settings.prefBatchSizeLimit == null)
+    {
+        app.updateSetting("prefBatchSizeLimit", (Long) 50)
+    }
+
     // NB: older versions will not have state.postCount set
     Integer postCount = state.postCount ?: 0
     Long timeNow = now()
@@ -870,24 +878,19 @@ void writeQueuedDataToInfluxDb() {
         logger("Post callback failsafe timeout", "debug")
         state.postCount = 0
 
-        // NB: prefBacklogLimit does not exist in older configurations
-        Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
-        if (loggerQueueSize > prefBacklogLimit) {
-            logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${prefBacklogLimit}: dropping ${postCount} events (failsafe)", "error")
+        if (loggerQueueSize > settings.prefBacklogLimit) {
+            logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${settings.prefBacklogLimit}: dropping ${postCount} events (failsafe)", "error")
             state.loggerQueue = state.loggerQueue.drop(postCount)
             loggerQueueSize -= postCount
         }
     }
 
-    // NB: prefBatchSizeLimit and prefBacklogLimit not exist in older configurations
-    Integer prefBatchSizeLimit = settings.prefBatchSizeLimit ?: 50
-    Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
     // If we have a backlog, log a warning
-    if (loggerQueueSize > prefBacklogLimit) {
+    if (loggerQueueSize > settings.prefBacklogLimit) {
         logger("Backlog of ${loggerQueueSize} events queued for InfluxDB", "warn")
     }
 
-    postCount = loggerQueueSize < prefBatchSizeLimit ? loggerQueueSize : prefBatchSizeLimit
+    postCount = loggerQueueSize < settings.prefBatchSizeLimit ? loggerQueueSize : settings.prefBatchSizeLimit
     state.postCount = postCount
     state.lastPost = timeNow
 
@@ -934,9 +937,13 @@ void handleInfluxResponse(hubResponse, closure) {
     else {
         logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "warn")
 
-        // NB: prefBacklogLimit does not exist in older configurations
-        Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
-        if (state.loggerQueue.size() <= prefBacklogLimit) {
+        // Migration: Old configurations will not have prefBacklogLimit set
+        if (settings.prefBacklogLimit == null)
+        {
+            app.updateSetting("prefBacklogLimit", (Long) 5000)
+        }
+
+        if (state.loggerQueue.size() <= settings.prefBacklogLimit) {
             if (state.loggerQueue.size() > postCount) {
                 logger("Backlog of ${state.loggerQueue.size()} events", "warn")
             }
@@ -946,7 +953,7 @@ void handleInfluxResponse(hubResponse, closure) {
             return
         }
 
-        logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${prefBacklogLimit}: dropping ${postCount} events", "error")
+        logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${settings.prefBacklogLimit}: dropping ${postCount} events", "error")
     }
 
     // Remove the post from the queue
