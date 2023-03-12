@@ -59,7 +59,7 @@
  *                              Disable debug logging of post data which drives hubs into the ground
  *                              Provide info logging of event data to replace post data logging
  *                              Allow backlog to be set as low as 1, allowing bad records to be cleared
- *   2023-03-XX Denny Page      Use a unified device type / attribute map (deviceTypeMap)
+ *   2023-03-12 Denny Page      Use a unified device type / attribute map (deviceTypeMap)
  *                              Unify advanced and non-advanced device selection processing
  *                              Move device event encoding out to a separate function
  *                              Enhance queueToInfluxDb to accept a list of events
@@ -852,12 +852,10 @@ void writeQueuedDataToInfluxDb() {
     }
 
     // Migration: Old configurations will not have prefBacklogLimit or prefBatchSizeLimit set
-    if (settings.prefBacklogLimit == null)
-    {
+    if (settings.prefBacklogLimit == null) {
         app.updateSetting("prefBacklogLimit", (Long) 5000)
     }
-    if (settings.prefBatchSizeLimit == null)
-    {
+    if (settings.prefBatchSizeLimit == null) {
         app.updateSetting("prefBatchSizeLimit", (Long) 50)
     }
 
@@ -938,8 +936,7 @@ void handleInfluxResponse(hubResponse, closure) {
         logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "warn")
 
         // Migration: Old configurations will not have prefBacklogLimit set
-        if (settings.prefBacklogLimit == null)
-        {
+        if (settings.prefBacklogLimit == null) {
             app.updateSetting("prefBacklogLimit", (Long) 5000)
         }
 
