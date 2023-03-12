@@ -1,4 +1,4 @@
-/* groovylint-disable DuplicateListLiteral, DuplicateNumberLiteral, DuplicateStringLiteral, ImplementationAsType, InvertedCondition, LineLength, MethodReturnTypeRequired, MethodSize, NestedBlockDepth, NoDef, UnnecessaryGString, UnnecessaryObjectReferences, UnnecessaryToString, VariableTypeRequired */
+/* groovylint-disable DuplicateListLiteral, DuplicateNumberLiteral, DuplicateStringLiteral, LineLength, MethodParameterTypeRequired, MethodReturnTypeRequired, MethodSize, NestedBlockDepth, NoDef, PublicMethodsBeforeNonPublicMethods, UnnecessaryGString, UnnecessaryGetter, UnnecessaryObjectReferences, UnusedMethodParameter, VariableTypeRequired */
 /*****************************************************************************************************************
  *  Source: https://github.com/HubitatCommunity/InfluxDB-Logger
  *
@@ -6,6 +6,7 @@
  *
  *  Forked from: https://github.com/codersaur/SmartThings/tree/master/smartapps/influxdb-logger
  *  Original Author: David Lomas (codersaur)
+ *  Previous Author: Joshua Marker (tooluser)
  *  Hubitat Elevation version maintained by HubitatCommunity (https://github.com/HubitatCommunity/InfluxDB-Logger)
  *
  *  License:
@@ -58,20 +59,81 @@
  *                              Disable debug logging of post data which drives hubs into the ground
  *                              Provide info logging of event data to replace post data logging
  *                              Allow backlog to be set as low as 1, allowing bad records to be cleared
+ *   2023-03-12 Denny Page      Use a unified device type / attribute map (deviceTypeMap)
+ *                              Unify advanced and non-advanced device selection processing
+ *                              Move device event encoding out to a separate function
+ *                              Enhance queueToInfluxDb to accept a list of events
+ *                              Complete rewrite of softpoll (take advantage of queueToInfluxDb lists)
+ *                              Remove unnecessary state variables
+ *                              Don't re-schedule batch post based on batch size, wait for existing timer
+ *                              Improve backlog warnings
+ *                              Lower backlog limits to prevent issues with app database size
+ *                              Normalize Hub information logging
  *****************************************************************************************************************/
 
 definition(
     name: "InfluxDB Logger",
     namespace: "nowhereville",
-    author: "Joshua Marker (tooluser)",
+    author: "Hubitat Community",
     description: "Log device states to InfluxDB",
-    category: "My Apps",
+    category: "Utility",
     importUrl: "https://raw.githubusercontent.com/HubitatCommunity/InfluxDB-Logger/master/influxdb-logger.groovy",
     iconUrl: "",
     iconX2Url: "",
     iconX3Url: "",
     singleThreaded: true
 )
+
+import groovy.transform.Field
+
+// Device type list
+@Field static final Map<String,Map> deviceTypeMap = [
+    'accelerometers': [ title: 'Accelerometers', capability: 'accelerationSensor', attributes: ['acceleration'] ],
+    'alarms': [ title: 'Alarms', capability: 'alarm', attributes: ['alarm'] ],
+    'batteries': [ title: 'Batteries', capability: 'battery', attributes: ['battery'] ],
+    'beacons': [ title: 'Beacons', capability: 'beacon', attributes: ['presence'] ],
+    'buttons': [ title: 'Buttons', capability: 'pushableButton', attributes: ['pushed', 'doubleTapped', 'held', 'released'] ],
+    'cos': [ title: 'Carbon Monoxide Detectors', capability: 'carbonMonoxideDetector', attributes: ['carbonMonoxide'] ],
+    'co2s': [ title: 'Carbon Dioxide Detectors', capability: 'carbonDioxideMeasurement', attributes: ['carbonDioxide'] ],
+    'colors': [ title: 'Color Controllers', capability: 'colorControl', attributes: ['hue', 'saturation', 'color'] ],
+    'consumables': [ title: 'Consumables', capability: 'consumable', attributes: ['consumableStatus'] ],
+    'contacts': [ title: 'Contact Sensors', capability: 'contactSensor', attributes: ['contact'] ],
+    'currentMeters': [ title: 'Current Meters', capability: 'currentMeter', attributes: ['amperage'] ],
+    'doorsControllers': [ title: 'Door Controllers', capability: 'doorControl', attributes: ['door'] ],
+    'energyMeters': [ title: 'Energy Meters', capability: 'energyMeter', attributes: ['energy'] ],
+    'filters': [ title: 'Filters', capability: 'filterStatus', attributes: ['filterStatus'] ],
+    'gasDetectors': [ title: 'Gas Detectors', capability: 'gasDetector', attributes: ['naturalGas'] ],
+    'humidities': [ title: 'Humidity Meters', capability: 'relativeHumidityMeasurement', attributes: ['humidity'] ],
+    'illuminances': [ title: 'Illuminance Meters', capability: 'illuminanceMeasurement', attributes: ['illuminance'] ],
+    'liquidFlowMeters': [ title: 'Liquid Flow Meters', capability: 'liquidFlowRate', attributes: ['rate'] ],
+    'locks': [ title: 'Locks', capability: 'lock', attributes: ['lock'] ],
+    'motions': [ title: 'Motion Sensors', capability: 'motionSensor', attributes: ['motion'] ],
+    'musicPlayers': [ title: 'Music Players', capability: 'musicPlayer', attributes: ['status', 'level', 'trackDescription', 'trackData', 'mute'] ],
+    'peds': [ title: 'Pedometers', capability: 'stepSensor', attributes: ['steps', 'goal'] ],
+    'phMeters': [ title: 'pH Meters', capability: 'pHMeasurement', attributes: ['pH'] ],
+    'powerMeters': [ title: 'Power Meters', capability: 'powerMeter', attributes: ['power'] ],
+    'powerSources': [ title: 'Power Sources', capability: 'powerSources', attributes: ['powerSource'] ],
+    'presences': [ title: 'Presence Sensors', capability: 'presenceSensor', attributes: ['presence'] ],
+    'pressures': [ title: 'Pressure Sensors', capability: 'pressureMeasurement', attributes: ['pressure'] ],
+    'shockSensors': [ title: 'Shock Sensors', capability: 'shockSensor', attributes: ['shock'] ],
+    'signalStrengthMeters': [ title: 'Signal Strength Meters', capability: 'signalStrength', attributes: ['lqi', 'rssi'] ],
+    'sleepSensors': [ title: 'Sleep Sensors', capability: 'sleepSensor', attributes: ['sleeping'] ],
+    'smokeDetectors': [ title: 'Smoke Detectors', capability: 'smokeDetector', attributes: ['smoke'] ],
+    'soundSensors': [ title: 'Sound Sensors', capability: 'soundSensor', attributes: ['sound'] ],
+    'spls': [ title: 'Sound Pressure Level Sensors', capability: 'soundPressureLevel', attributes: ['soundPressureLevel'] ],
+    'switches': [ title: 'Switches', capability: 'switch', attributes: ['switch'] ],
+    'switchLevels': [ title: 'Switch Levels', capability: 'switchLevel', attributes: ['level'] ],
+    'tamperAlerts': [ title: 'Tamper Alerts', capability: 'tamperAlert', attributes: ['tamper'] ],
+    'temperatures': [ title: 'Temperature Sensors', capability: 'temperatureMeasurement', attributes: ['temperature'] ],
+    'thermostats': [ title: 'Thermostats', capability: 'thermostat', attributes: ['temperature', 'heatingSetpoint', 'coolingSetpoint', 'thermostatSetpoint', 'thermostatMode', 'thermostatFanMode', 'thermostatOperatingState', 'thermostatSetpointMode', 'scheduledSetpoint'] ],
+    'threeAxis': [ title: 'Three-axis (Orientation) Sensors', capability: 'threeAxis', attributes: ['threeAxis'] ],
+    'touchs': [ title: 'Touch Sensors', capability: 'touchSensor', attributes: ['touch'] ],
+    'uvs': [ title: 'UV Sensors', capability: 'ultravioletIndex', attributes: ['ultravioletIndex'] ],
+    'valves': [ title: 'Valves', capability: 'valve', attributes: ['contact'] ],
+    'volts': [ title: 'Voltage Meters', capability: 'voltageMeasurement', attributes: ['voltage'] ],
+    'waterSensors': [ title: 'Water Sensors', capability: 'waterSensor', attributes: ['water'] ],
+    'windowShades': [ title: 'Window Shades', capability: 'windowShade', attributes: ['windowShade'] ]
+]
 
 preferences {
     page(name: "setupMain")
@@ -125,22 +187,19 @@ def setupMain() {
             )
             input(
                 name: "prefBacklogLimit",
-                title: "Backlog size limit - maximum number of queued events before dropping failed posts (range 1-25000)",
+                title: "Backlog size limit - maximum number of queued events before dropping failed posts (range 1-10000)",
                 type: "number",
-                range: "1..25000",
+                range: "1..10000",
                 defaultValue: "5000",
                 required: true
             )
         }
 
-        section("\n<h3>Device Event Handling:</h3>") {
-            input "includeHubInfo", "bool", title:"Include Hub Name and Hub Location as InfluxDB tags for device events", defaultValue: true
-            input "filterEvents", "bool", title:"Only post device events to InfluxDB when the data value changes", defaultValue: true
-
+        section("\n<h3>Event Handling:</h3>") {
             input(
                 // NB: Called prefSoftPollingInterval for backward compatibility with prior versions
                 name: "prefSoftPollingInterval",
-                title: "Post keep alive events (aka softpoll) - re-post last value if a new event has not occurred in this time",
+                title: "Post keep alive events (aka softpoll) - check every softpoll interval and re-post last value if a new event has not occurred in this time",
                 type: "enum",
                 options: [
                     "0" : "disabled",
@@ -156,6 +215,11 @@ def setupMain() {
                 submitOnChange: true,
                 required: true
             )
+            if (prefSoftPollingInterval != "0") {
+                input "prefPostHubInfo", "bool", title:"Post Hub information (IP, firmware, uptime, mode, sunrise/sunset) to InfluxDB", defaultValue: false
+            }
+            input "includeHubInfo", "bool", title:"Include Hub Name as a tag for device events", defaultValue: true
+            input "filterEvents", "bool", title:"Only post device events to InfluxDB when the data value changes", defaultValue: true
         }
 
         section("Devices To Monitor:", hideable:true, hidden:false) {
@@ -164,78 +228,22 @@ def setupMain() {
             if (accessAllAttributes) {
                 input name: "allDevices", type: "capability.*", title: "Selected Devices", multiple: true, required: false, submitOnChange: true
 
-                state.selectedAttr = [:]
-                settings.allDevices.each { deviceName ->
-                    if (deviceName) {
-                        deviceId = deviceName.getId()
-                        attr = deviceName.getSupportedAttributes().unique()
-                        if (attr) {
-                            state.options = []
-                            index = 0
-                            attr.each { at ->
-                                state.options[index] = "${at}"
-                                index = index + 1
-                            }
-                            input name:"attrForDev$deviceId", type: "enum", title: "$deviceName", options: state.options, multiple: true, required: false, submitOnChange: true
-                            state.selectedAttr[deviceId] = settings["attrForDev" + deviceId]
+                settings.allDevices.each { device ->
+                    deviceId = device.getId()
+                    attrList = device.getSupportedAttributes().unique()
+                    if (attrList) {
+                        options = []
+                        attrList.each { attr ->
+                            options.add("${attr}")
                         }
+                        input name:"attrForDev${deviceId}", type: "enum", title: "$device", options: options.sort(), multiple: true, required: false, submitOnChange: true
                     }
                 }
             }
             else {
-                input "accelerometers", "capability.accelerationSensor", title: "Accelerometers", multiple: true, required: false
-                input "alarms", "capability.alarm", title: "Alarms", multiple: true, required: false
-                input "batteries", "capability.battery", title: "Batteries", multiple: true, required: false
-                input "beacons", "capability.beacon", title: "Beacons", multiple: true, required: false
-                input "buttons", "capability.pushableButton", title: "Buttons", multiple: true, required: false
-                input "cos", "capability.carbonMonoxideDetector", title: "Carbon Monoxide Detectors", multiple: true, required: false
-                input "co2s", "capability.carbonDioxideMeasurement", title: "Carbon Dioxide Detectors", multiple: true, required: false
-                input "colors", "capability.colorControl", title: "Color Controllers", multiple: true, required: false
-                input "consumables", "capability.consumable", title: "Consumables", multiple: true, required: false
-                input "contacts", "capability.contactSensor", title: "Contact Sensors", multiple: true, required: false
-                input "currentMeters", "capability.currentMeter", title: "Current Meters", multiple:true, required: false
-                input "doorsControllers", "capability.doorControl", title: "Door Controllers", multiple: true, required: false
-                input "energyMeters", "capability.energyMeter", title: "Energy Meters", multiple: true, required: false
-                input "filters", "capability.filterStatus", title: "Filters", multiple: true, required: false
-                input "gasDetectors", "capability.gasDetector", title: "Gas Detectors", multiple: true, required: false
-                input "humidities", "capability.relativeHumidityMeasurement", title: "Humidity Meters", multiple: true, required: false
-                input "illuminances", "capability.illuminanceMeasurement", title: "Illuminance Meters", multiple: true, required: false
-                input "liquidFlowMeters", "capability.liquidFlowRate", title: "Liquid Flow Meters", multiple: true, required: false
-                input "locks", "capability.lock", title: "Locks", multiple: true, required: false
-                input "motions", "capability.motionSensor", title: "Motion Sensors", multiple: true, required: false
-                input "musicPlayers", "capability.musicPlayer", title: "Music Players", multiple: true, required: false
-                input "peds", "capability.stepSensor", title: "Pedometers", multiple: true, required: false
-                input "phMeters", "capability.pHMeasurement", title: "pH Meters", multiple: true, required: false
-                input "powerMeters", "capability.powerMeter", title: "Power Meters", multiple: true, required: false
-                input "powerSources", "capability.powerSources", title: "Power Sources", multiple: true, required: false
-                input "presences", "capability.presenceSensor", title: "Presence Sensors", multiple: true, required: false
-                input "pressures", "capability.pressureMeasurement", title: "Pressure Sensors", multiple: true, required: false
-                input "shockSensors", "capability.shockSensor", title: "Shock Sensors", multiple: true, required: false
-                input "signalStrengthMeters", "capability.signalStrength", title: "Signal Strength Meters", multiple: true, required: false
-                input "sleepSensors", "capability.sleepSensor", title: "Sleep Sensors", multiple: true, required: false
-                input "smokeDetectors", "capability.smokeDetector", title: "Smoke Detectors", multiple: true, required: false
-                input "soundSensors", "capability.soundSensor", title: "Sound Sensors", multiple: true, required: false
-                input "spls", "capability.soundPressureLevel", title: "Sound Pressure Level Sensors", multiple: true, required: false
-                input "switches", "capability.switch", title: "Switches", multiple: true, required: false
-                input "switchLevels", "capability.switchLevel", title: "Switch Levels", multiple: true, required: false
-                input "tamperAlerts", "capability.tamperAlert", title: "Tamper Alerts", multiple: true, required: false
-                input "temperatures", "capability.temperatureMeasurement", title: "Temperature Sensors", multiple: true, required: false
-                input "thermostats", "capability.thermostat", title: "Thermostats", multiple: true, required: false
-                input "threeAxis", "capability.threeAxis", title: "Three-axis (Orientation) Sensors", multiple: true, required: false
-                input "touchs", "capability.touchSensor", title: "Touch Sensors", multiple: true, required: false
-                input "uvs", "capability.ultravioletIndex", title: "UV Sensors", multiple: true, required: false
-                input "valves", "capability.valve", title: "Valves", multiple: true, required: false
-                input "volts", "capability.voltageMeasurement", title: "Voltage Meters", multiple: true, required: false
-                input "waterSensors", "capability.waterSensor", title: "Water Sensors", multiple: true, required: false
-                input "windowShades", "capability.windowShade", title: "Window Shades", multiple: true, required: false
-            }
-        }
-
-        if (prefSoftPollingInterval != "0") {
-            section("System Monitoring:", hideable:true, hidden:true) {
-                input "prefLogHubProperties", "bool", title:"Post Hub Properties such as IP and firmware to InfluxDB", defaultValue: false
-                input "prefLogLocationProperties", "bool", title:"Post Location Properties such as sunrise/sunset to InfluxDB", defaultValue: false
-                input "prefLogModeEvents", "bool", title:"Post Mode Events to InfluxDB", defaultValue: false
+                deviceTypeMap.each { name, entry ->
+                    input "${name}", "capability.${entry.capability}", title: "${entry.title}", multiple: true, required: false
+                }
             }
         }
     }
@@ -292,25 +300,13 @@ def connectionPage() {
     }
 }
 
-def getDeviceObj(id) {
-    def found
-    settings.allDevices.each { device ->
-        if (device.getId() == id) {
-            //log.debug "Found at $device for $id with id: ${device.id}"
-            found = device
-        }
-    }
-    return found
-}
-
 /**
  *  installed()
  *
  *  Runs when the app is first installed.
  **/
-def installed() {
+void installed() {
     state.installedAt = now()
-    state.loggingLevelIDE = 3
     state.loggerQueue = []
     updated()
     log.info "${app.label}: Installed"
@@ -321,7 +317,7 @@ def installed() {
  *
  *  Runs when the app is uninstalled.
  **/
-def uninstalled() {
+void uninstalled() {
     log.info "${app.label}: Uninstalled"
 }
 
@@ -329,82 +325,37 @@ def uninstalled() {
  *  updated()
  *
  *  Runs when app settings are changed.
- *
- *  Updates device.state with input values and other hard-coded values.
- *  Builds state.deviceAttributes which describes the attributes that will be monitored for each device collection
- *  (used by manageSubscriptions() and softPoll()).
- *  Refreshes scheduling and subscriptions.
  **/
-def updated() {
+void updated() {
     // Update application name
-    app.updateLabel(appName)
+    app.updateLabel(settings.appName)
     logger("${app.label}: Updated", "info")
-
-    // Update internal state:
-    state.loggingLevelIDE = (settings.configLoggingLevelIDE) ? settings.configLoggingLevelIDE.toInteger() : 3
 
     // Database config:
     setupDB()
 
-    // Build array of device collections and the attributes we want to report on for that collection:
-    //  Note, the collection names are stored as strings. Adding references to the actual collection
-    //  objects causes major issues (possibly memory issues?).
-    state.deviceAttributes = []
-    state.deviceAttributes << [ devices: 'accelerometers', attributes: ['acceleration']]
-    state.deviceAttributes << [ devices: 'alarms', attributes: ['alarm']]
-    state.deviceAttributes << [ devices: 'batteries', attributes: ['battery']]
-    state.deviceAttributes << [ devices: 'beacons', attributes: ['presence']]
-    state.deviceAttributes << [ devices: 'buttons', attributes: ['pushed', 'doubleTapped', 'held', 'released']]
-    state.deviceAttributes << [ devices: 'cos', attributes: ['carbonMonoxide']]
-    state.deviceAttributes << [ devices: 'co2s', attributes: ['carbonDioxide']]
-    state.deviceAttributes << [ devices: 'colors', attributes: ['hue', 'saturation', 'color']]
-    state.deviceAttributes << [ devices: 'consumables', attributes: ['consumableStatus']]
-    state.deviceAttributes << [ devices: 'contacts', attributes: ['contact']]
-    state.deviceAttributes << [ devices: 'currentMeters', attributes: ['amperage']]
-    state.deviceAttributes << [ devices: 'doorsControllers', attributes: ['door']]
-    state.deviceAttributes << [ devices: 'energyMeters', attributes: ['energy']]
-    state.deviceAttributes << [ devices: 'filters', attributes: ['filterStatus']]
-    state.deviceAttributes << [ devices: 'gasDetectors', attributes: ['naturalGas']]
-    state.deviceAttributes << [ devices: 'humidities', attributes: ['humidity']]
-    state.deviceAttributes << [ devices: 'illuminances', attributes: ['illuminance']]
-    state.deviceAttributes << [ devices: 'liquidFlowMeters', attributes: ['rate']]
-    state.deviceAttributes << [ devices: 'locks', attributes: ['lock']]
-    state.deviceAttributes << [ devices: 'motions', attributes: ['motion']]
-    state.deviceAttributes << [ devices: 'musicPlayers', attributes: ['status', 'level', 'trackDescription', 'trackData', 'mute']]
-    state.deviceAttributes << [ devices: 'peds', attributes: ['steps', 'goal']]
-    state.deviceAttributes << [ devices: 'phMeters', attributes: ['pH']]
-    state.deviceAttributes << [ devices: 'powerMeters', attributes: ['power']]
-    state.deviceAttributes << [ devices: 'powerSources', attributes: ['powerSource']]
-    state.deviceAttributes << [ devices: 'presences', attributes: ['presence']]
-    state.deviceAttributes << [ devices: 'pressures', attributes: ['pressure']]
-    state.deviceAttributes << [ devices: 'shockSensors', attributes: ['shock']]
-    state.deviceAttributes << [ devices: 'signalStrengthMeters', attributes: ['lqi', 'rssi']]
-    state.deviceAttributes << [ devices: 'sleepSensors', attributes: ['sleeping']]
-    state.deviceAttributes << [ devices: 'smokeDetectors', attributes: ['smoke']]
-    state.deviceAttributes << [ devices: 'soundSensors', attributes: ['sound']]
-    state.deviceAttributes << [ devices: 'spls', attributes: ['soundPressureLevel']]
-    state.deviceAttributes << [ devices: 'switches', attributes: ['switch']]
-    state.deviceAttributes << [ devices: 'switchLevels', attributes: ['level']]
-    state.deviceAttributes << [ devices: 'tamperAlerts', attributes: ['tamper']]
-    state.deviceAttributes << [ devices: 'temperatures', attributes: ['temperature']]
-    state.deviceAttributes << [ devices: 'thermostats', attributes: ['temperature', 'heatingSetpoint', 'coolingSetpoint', 'thermostatSetpoint', 'thermostatMode', 'thermostatFanMode', 'thermostatOperatingState', 'thermostatSetpointMode', 'scheduledSetpoint']]
-    state.deviceAttributes << [ devices: 'threeAxis', attributes: ['threeAxis']]
-    state.deviceAttributes << [ devices: 'touchs', attributes: ['touch']]
-    state.deviceAttributes << [ devices: 'uvs', attributes: ['ultravioletIndex']]
-    state.deviceAttributes << [ devices: 'valves', attributes: ['contact']]
-    state.deviceAttributes << [ devices: 'volts', attributes: ['voltage']]
-    state.deviceAttributes << [ devices: 'waterSensors', attributes: ['water']]
-    state.deviceAttributes << [ devices: 'windowShades', attributes: ['windowShade']]
+    // Clear out any prior subscriptions
+    unsubscribe()
 
-    // Configure device subscriptions:
-    manageSubscriptions()
+    // Create device subscriptions
+    Map<String,List> deviceAttrMap = getDeviceAttrMap()
+    deviceAttrMap.each { device, attrList ->
+        attrList.each { attr ->
+            logger("Subscribing to ${device}: ${attr}", "info")
+            subscribe(device, attr, handleEvent, ["filterEvents": filterEvents])
+        }
+    }
 
     // Subscribe to system start
     subscribe(location, "systemStart", hubRestartHandler)
 
-    // Flush any pending batch and set up softpoll if requested
+    // Subscribe to mode events if requested
+    if (prefPostHubInfo) {
+        subscribe(location, "mode", handleModeEvent)
+    }
+
+    // Clear out any prior schedules
     unschedule()
-    runIn(1, writeQueuedDataToInfluxDb)
 
     // Set up softpoll if requested
     // NB: This is called softPoll to maintain backward compatibility wirh prior versions
@@ -433,52 +384,79 @@ def updated() {
             break
     }
 
+    // Flush any pending batch
+    runIn(1, writeQueuedDataToInfluxDb)
+
     // Clean up old state variables
+    // Remove around end of 2023
+    state.remove("deviceAttributes")
+    state.remove("deviceList")
+    state.remove("loggingLevelIDE")
+    state.remove("options")
+    state.remove("postExpire")
     state.remove("queuedData")
+    state.remove("selectedAttr")
     state.remove("writeInterval")
+    app.removeSetting("prefLogHubProperties")
+    app.removeSetting("prefLogLocationProperties")
+    app.removeSetting("prefLogModeEvents")
 }
 
 /**
+ *  getDeviceAttrMap()
  *
+ *  Build a device attribute map.
+ *
+ * If using attribute selection, a device will appear only once in the array, with one or more attributes.
+ * If using capability selection, a device may appear multiple times in the array, each time with a single attribue.
+ **/
+private Map<String,List> getDeviceAttrMap() {
+    deviceAttrMap = [:]
+
+    if (settings.accessAllAttributes) {
+        settings.allDevices.each { device ->
+            deviceId = device.getId()
+            deviceAttrMap[device] = settings["attrForDev${deviceId}"]
+        }
+    }
+    else {
+        deviceTypeMap.each { name, entry ->
+            deviceList = settings."${name}"
+            if (deviceList) {
+                deviceList.each { device ->
+                    deviceAttrMap[device] = entry.attributes
+                }
+            }
+        }
+    }
+
+    return deviceAttrMap
+}
+
+/**
  * hubRestartHandler()
  *
  * Handle hub restarts.
 **/
-def hubRestartHandler(evt)
-{
-    loggerQueue = state.loggerQueue
-    if (loggerQueue && loggerQueue.size()) {
-        runIn(10, writeQueuedDataToInfluxDb)
+void hubRestartHandler(evt) {
+    if (prefPostHubInfo) {
+        handleModeEvent(null)
+    }
+
+    if (state.loggerQueue?.size()) {
+        runIn(60, writeQueuedDataToInfluxDb)
     }
 }
 
 /**
- *  handleModeEvent(evt)
- *
- *  Log Mode changes.
- **/
-def handleModeEvent(evt) {
-    logger("Mode changed to: ${evt.value}", "debug")
-
-    def locationName = escapeStringForInfluxDB(location.name)
-    def mode = '"' + escapeStringForInfluxDB(evt.value) + '"'
-    long eventTimestamp = evt.unixTime * 1e6       // Time is in milliseconds, but InfluxDB expects nanoseconds
-    def data = "_stMode,locationName=${locationName} mode=${mode} ${eventTimestamp}"
-    queueToInfluxDb(data)
-}
-
-/**
- *  handleEvent(evt)
+ *  encodeDeviceEvent(evt)
  *
  *  Builds data to send to InfluxDB.
  *   - Escapes and quotes string values.
  *   - Calculates logical binary values where string values can be
  *     represented as binary values (e.g. contact: closed = 1, open = 0)
  **/
-def handleEvent(evt) {
-    //logger("Handle Event: ${evt.displayName}(${evt.name}:${evt.unit}) $evt.value", "debug")
-    logger("Handle Event: ${evt}", "debug")
-
+private String encodeDeviceEvent(evt) {
     //
     // Set up unit/value/valueBinary values
     //
@@ -490,117 +468,117 @@ def handleEvent(evt) {
         case 'acceleration':
             // binary value: active = 1, <any other value> = 0
             unit = 'acceleration'
-            valueBinary = ('active' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'active') ? '1i' : '0i'
             break
         case 'alarm':
             // binary value: <any other value> = 1, off = 0
             unit = 'alarm'
-            valueBinary = ('off' == evt.value) ? '0i' : '1i'
+            valueBinary = (evt.value == 'off') ? '0i' : '1i'
             break
         case 'carbonMonoxide':
             // binary value: detected = 1, <any other value> = 0
             unit = 'carbonMonoxide'
-            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'consumableStatus':
             // binary value: good = 1, <any other value> = 0
             unit = 'consumableStatus'
-            valueBinary = ('good' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'good') ? '1i' : '0i'
             break
         case 'contact':
             // binary value: closed = 1, <any other value> = 0
             unit = 'contact'
-            valueBinary = ('closed' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'closed') ? '1i' : '0i'
             break
         case 'door':
             // binary value: closed = 1, <any other value> = 0
             unit = 'door'
-            valueBinary = ('closed' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'closed') ? '1i' : '0i'
             break
         case 'filterStatus':
             // binary value: normal = 1, <any other value> = 0
             unit = 'filterStatus'
-            valueBinary = ('normal' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'normal') ? '1i' : '0i'
             break
         case 'lock':
             // binary value: locked = 1, <any other value> = 0
             unit = 'lock'
-            valueBinary = ('locked' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'locked') ? '1i' : '0i'
             break
         case 'motion':
             // binary value: active = 1, <any other value> = 0
             unit = 'motion'
-            valueBinary = ('active' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'active') ? '1i' : '0i'
             break
         case 'mute':
             // binary value: muted = 1, <any other value> = 0
             unit = 'mute'
-            valueBinary = ('muted' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'muted') ? '1i' : '0i'
             break
         case 'naturalGas':
             // binary value: detected = 1, <any other value> = 0
             unit = 'naturalGas'
-            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'powerSource':
             // binary value: mains = 1, <any other value> = 0
             unit = 'powerSource'
-            valueBinary = ('mains' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'mains') ? '1i' : '0i'
             break
         case 'presence':
             // binary value: present = 1, <any other value> = 0
             unit = 'presence'
-            valueBinary = ('present' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'present') ? '1i' : '0i'
             break
         case 'shock':
             // binary value: detected = 1, <any other value> = 0
             unit = 'shock'
-            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'sleeping':
             // binary value: sleeping = 1, <any other value> = 0
             unit = 'sleeping'
-            valueBinary = ('sleeping' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'sleeping') ? '1i' : '0i'
             break
         case 'smoke':
             // binary value: detected = 1, <any other value> = 0
             unit = 'smoke'
-            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'sound':
             // binary value: detected = 1, <any other value> = 0
             unit = 'sound'
-            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'switch':
             // binary value: on = 1, <any other value> = 0
             unit = 'switch'
-            valueBinary = ('on' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'on') ? '1i' : '0i'
             break
         case 'tamper':
             // binary value: detected = 1, <any other value> = 0
             unit = 'tamper'
-            valueBinary = ('detected' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'thermostatMode':
             // binary value: <any other value> = 1, off = 0
             unit = 'thermostatMode'
-            valueBinary = ('off' == evt.value) ? '0i' : '1i'
+            valueBinary = (evt.value == 'off') ? '0i' : '1i'
             break
         case 'thermostatFanMode':
             // binary value: <any other value> = 1, auto = 0
             unit = 'thermostatFanMode'
-            valueBinary = ('auto' == evt.value) ? '0i' : '1i'
+            valueBinary = (evt.value == 'auto') ? '0i' : '1i'
             break
         case 'thermostatOperatingState':
             // binary value: heating or cooling = 1, <any other value> = 0
             unit = 'thermostatOperatingState'
-            valueBinary = ('heating' == evt.value || 'cooling' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'heating' || evt.value == 'cooling') ? '1i' : '0i'
             break
         case 'thermostatSetpointMode':
             // binary value: followSchedule = 0, <any other value> = 1
             unit = 'thermostatSetpointMode'
-            valueBinary = ('followSchedule' == evt.value) ? '0i' : '1i'
+            valueBinary = (evt.value == 'followSchedule') ? '0i' : '1i'
             break
         case 'threeAxis':
             // threeAxis: Format to x,y,z values
@@ -617,22 +595,22 @@ def handleEvent(evt) {
         case 'touch':
             // binary value: touched = 1, <any other value> = 0
             unit = 'touch'
-            valueBinary = ('touched' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'touched') ? '1i' : '0i'
             break
         case 'valve':
             // binary value: open = 1, <any other value> = 0
             unit = 'valve'
-            valueBinary = ('open' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'open') ? '1i' : '0i'
             break
         case 'water':
             // binary value: wet = 1, <any other value> = 0
             unit = 'water'
-            valueBinary = ('wet' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'wet') ? '1i' : '0i'
             break
         case 'windowShade':
             // binary value: closed = 1, <any other value> = 0
             unit = 'windowShade'
-            valueBinary = ('closed' == evt.value) ? '1i' : '0i'
+            valueBinary = (evt.value == 'closed') ? '1i' : '0i'
             break
 
         // The Mysterious Case of The Button
@@ -678,18 +656,15 @@ def handleEvent(evt) {
     //  Format: <measurement>[,<tag_name>=<tag_value>] field=<field_value>
     //    If value is an integer, it must have a trailing "i"
     //    If value is a string, it must be enclosed in double quotes.
-
-    // Measurement and device tags
     String measurement = escapeStringForInfluxDB((evt.name))
-    String deviceId = evt?.deviceId?.toString()
-    String deviceName = escapeStringForInfluxDB(evt?.displayName)
+    String deviceId = evt.deviceId
+    String deviceName = escapeStringForInfluxDB(evt.displayName)
     String data = "${measurement},deviceName=${deviceName},deviceId=${deviceId}"
 
-    // Add hub name and location tags if requested
+    // Add hub name (location) tag if requested
     if (settings.includeHubInfo == null || settings.includeHubInfo) {
-        String hubName = escapeStringForInfluxDB(evt?.device?.device?.hub?.name?.toString())
-        String locationName = escapeStringForInfluxDB(location.name)
-        data += ",hubName=${hubName},locationName=${locationName}"
+        String hubName = escapeStringForInfluxDB(location.name)
+        data += ",hubName=\"${hubName}\""
     }
 
     // Add the unit and value(s)
@@ -706,12 +681,66 @@ def handleEvent(evt) {
     }
 
     // Add the event timestamp
-    long eventTimestamp = evt?.unixTime * 1e6 // milliseconds to nanoseconds
+    long eventTimestamp = evt.unixTime * 1e6 // milliseconds to nanoseconds
     data += " ${eventTimestamp}"
 
+    // Return the completed string
+    return(data)
+}
+
+/**
+ *  handleEvent(evt)
+ *
+ *  Builds data to send to InfluxDB.
+ *   - Escapes and quotes string values.
+ *   - Calculates logical binary values where string values can be
+ *     represented as binary values (e.g. contact: closed = 1, open = 0)
+ **/
+void handleEvent(evt) {
+    logger("Handle Event: ${evt}", "debug")
+
+    // Encode the event
+    data = encodeDeviceEvent(evt)
+
     // Add event to the queue for InfluxDB
-    logger("Queued event: ${data}", "info")
-    queueToInfluxDb(data)
+    queueToInfluxDb([data])
+}
+
+/**
+ *  encodeHubInfo(evt)
+ *
+ *  Build a Hub Information record.
+ **/
+private String encodeHubInfo(evt) {
+    String hubName = escapeStringForInfluxDB(location.name)
+    String localIP = escapeStringForInfluxDB(location.hub.localIP)
+    String firmwareVersion = escapeStringForInfluxDB(location.hub.firmwareVersionString)
+    String upTime = escapeStringForInfluxDB(location.hub.uptime.toString())
+    String mode = escapeStringForInfluxDB(evt?.value ? evt.value : location.getMode())
+
+    def times = getSunriseAndSunset()
+    String sunriseTime = escapeStringForInfluxDB(times.sunrise.format("HH:mm", location.timeZone))
+    String sunsetTime = escapeStringForInfluxDB(times.sunset.format("HH:mm", location.timeZone))
+
+    Long eventTimestamp = (evt?.unixTime ? evt.unixTime : now()) * 1e6       // Time is in milliseconds, but InfluxDB expects nanoseconds
+
+    String data = "_hubInfo,hubName=\"${hubName}\" localIP=\"${localIP}\",firmwareVersion=\"${firmwareVersion}\",upTime=\"${upTime}\",mode=\"${mode}\",sunriseTime=\"${sunriseTime}\",sunsetTime=\"${sunsetTime}\" ${eventTimestamp}"
+    return data
+}
+
+/**
+ *  handleModeEvent(evt)
+ *
+ *  Log hub information when mode changes.
+ **/
+void handleModeEvent(evt) {
+    logger("Handle Mode Event: ${evt}", "debug")
+
+    // Encode the event
+    data = encodeHubInfo(evt)
+
+    // Add event to the queue for InfluxDB
+    queueToInfluxDb([data])
 }
 
 /**
@@ -722,110 +751,54 @@ def handleEvent(evt) {
  *
  *  NB: Function name softPoll must be kept for backward compatibility
  **/
-def softPoll() {
+void softPoll() {
     logger("Keepalive check", "debug")
 
-    logSystemProperties()
+    // Migration: Old configurations will not have prefPostHubInfo set
+    if (settings.prefPostHubInfo == null) {
+        app.updateSetting("prefPostHubInfo", (Boolean) (settings.prefLogHubProperties || settings.prefLogLocationProperties || settings.prefLogModeEvents))
+    }
 
-    long timeNow = new Date().time
-    long lastTime = timeNow - (state.softPollingInterval * 60000)
+    // Get the map
+    Map<String,List> deviceAttrMap = getDeviceAttrMap()
 
-    if (accessAllAttributes) {
-        // Iterate over each attribute for each device, in each device collection in deviceAttributes:
-        state.selectedAttr.each { entry ->
-            d = getDeviceObj(entry.key)
-            entry.value.each { attr ->
-                if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
-                    if (d.latestState(attr).date.time <= lastTime) {
-                        logger("Keep alive for device ${d}, attribute ${attr}", "debug")
-                        // Send fake event to handleEvent():
-                        handleEvent([
-                            name: attr,
-                            value: d.latestState(attr)?.value,
-                            unit: d.latestState(attr)?.unit,
-                            device: d,
-                            deviceId: d.id,
-                            displayName: d.displayName,
-                            unixTime: timeNow
-                        ])
-                    }
+    // Create the list
+    Long timeNow = now()
+    List<String> eventList = []
+    deviceAttrMap.each { device, attrList ->
+        attrList.each { attr ->
+            if (device.latestState(attr)) {
+                Integer activityMinutes = (timeNow - device.latestState(attr).date.time) / 60000
+                if (activityMinutes > state.softPollingInterval) {
+                    logger("Keep alive for device ${device}(${attr})", "debug")
+                    event = encodeDeviceEvent([
+                        name: attr,
+                        value: device.latestState(attr).value,
+                        unit: device.latestState(attr).unit,
+                        device: device,
+                        deviceId: device.id,
+                        displayName: device.displayName,
+                        unixTime: timeNow
+                    ])
+                    eventList.add(event)
+                }
+                else {
+                    logger("Keep alive for device ${device}(${attr}) unnecessary - last activity ${activityMinutes} minutes", "debug")
                 }
             }
-        }
-    }
-    else {
-        def devs // temp variable to hold device collection.
-        state.deviceAttributes.each { da ->
-            devs = settings."${da.devices}"
-            if (devs && (da.attributes)) {
-                devs.each { d ->
-                    da.attributes.each { attr ->
-                        if (d.hasAttribute(attr) && d.latestState(attr)?.value != null) {
-                            if (d.latestState(attr).date.time <= lastTime) {
-                                logger("Keep alive for device ${d}, attribute ${attr}", "debug")
-                                // Send fake event to handleEvent():
-                                handleEvent([
-                                    name: attr,
-                                    value: d.latestState(attr)?.value,
-                                    unit: d.latestState(attr)?.unit,
-                                    device: d,
-                                    deviceId: d.id,
-                                    displayName: d.displayName,
-                                    unixTime: timeNow
-                                ])
-                            }
-                        }
-                    }
-                }
+            else {
+                logger("Keep alive for device ${device}(${attr}) suppressed - last activity never", "debug")
             }
         }
     }
-}
 
-/**
- *  logSystemProperties()
- *
- *  Generates measurements for hub and location properties.
- **/
-private def logSystemProperties() {
-    logger("Logging system properties", "debug")
-
-    def locationName = '"' + escapeStringForInfluxDB(location.name) + '"'
-    long timeNow = (new Date().time) * 1e6 // Time is in milliseconds, needs to be in nanoseconds when pushed to InfluxDB
-
-    // Location Properties:
-    if (prefLogLocationProperties) {
-        try {
-            def tz = '"' + escapeStringForInfluxDB(location.timeZone.ID.toString()) + '"'
-            def mode = '"' + escapeStringForInfluxDB(location.mode) + '"'
-            def times = getSunriseAndSunset()
-            def srt = '"' + times.sunrise.format("HH:mm", location.timeZone) + '"'
-            def sst = '"' + times.sunset.format("HH:mm", location.timeZone) + '"'
-
-            def data = "_heLocation,locationName=${locationName},latitude=${location.latitude},longitude=${location.longitude},timeZone=${tz} mode=${mode},sunriseTime=${srt},sunsetTime=${sst} ${timeNow}"
-            queueToInfluxDb(data)
-        }
-        catch (e) {
-            logger("Unable to log Location properties: ${e}", "error")
-        }
+    // Add a hub information record if requested
+    if (settings.prefPostHubInfo) {
+        eventList.add(encodeHubInfo(null))
     }
 
-    // Hub Properties:
-    if (prefLogHubProperties) {
-        location.hubs.each { h ->
-            try {
-                def hubName = '"' + escapeStringForInfluxDB(h.name.toString()) + '"'
-                def hubIP = '"' + escapeStringForInfluxDB(h.localIP.toString()) + '"'
-                def firmwareVersion =  '"' + escapeStringForInfluxDB(h.firmwareVersionString) + '"'
-
-                def data = "_heHub,locationName=${locationName},hubName=${hubName},hubIP=${hubIP} firmwareVersion=${firmwareVersion} ${timeNow}"
-                queueToInfluxDb(data)
-            }
-            catch (e) {
-                logger("Unable to log Hub properties: ${e}", "error")
-            }
-        }
-    }
+    // Queue the events
+    queueToInfluxDb(eventList)
 }
 
 /**
@@ -833,22 +806,21 @@ private def logSystemProperties() {
  *
  *  Adds events to the InfluxDB queue.
  **/
-private def queueToInfluxDb(data) {
-    loggerQueue = state.loggerQueue
-    if (loggerQueue == null) {
+private void queueToInfluxDb(List<String> eventList) {
+    if (state.loggerQueue == null) {
         // Failsafe if coming from an old version
-        loggerQueue = []
-        state.loggerQueue = loggerQueue
+        state.loggerQueue = []
     }
 
-    loggerQueue.add(data)
-    // NB: prefBatchSizeLimit does not exist in older configurations
-    Integer prefBatchSizeLimit = settings.prefBatchSizeLimit ?: 50
-    if (loggerQueue.size() >= prefBatchSizeLimit) {
-        logger("Maximum queue size reached", "debug")
-        writeQueuedDataToInfluxDb()
+    // Add the data to the queue
+    priorLoggerQueueSize = state.loggerQueue.size()
+    state.loggerQueue += eventList
+    eventList.each { event ->
+        logger("Queued event: ${event}", "info")
     }
-    else if (loggerQueue.size() == 1) {
+
+    // If this is the first data in the batch, trigger the timer
+    if (priorLoggerQueueSize == 0) {
         logger("Scheduling batch", "debug")
         // NB: prefBatchTimeLimit does not exist in older configurations
         Integer prefBatchTimeLimit = settings.prefBatchTimeLimit ?: 60
@@ -863,9 +835,8 @@ private def queueToInfluxDb(data) {
  *
  *  NB: Function name writeQueuedDataToInfluxDb must be kept for backward compatibility
 **/
-def writeQueuedDataToInfluxDb() {
-    loggerQueue = state.loggerQueue
-    if (loggerQueue == null) {
+void writeQueuedDataToInfluxDb() {
+    if (state.loggerQueue == null) {
         // Failsafe if coming from an old version
         return
     }
@@ -874,10 +845,18 @@ def writeQueuedDataToInfluxDb() {
         setupDB()
     }
 
-    Integer loggerQueueSize = loggerQueue.size()
+    Integer loggerQueueSize = state.loggerQueue.size()
     logger("Number of events queued for InfluxDB: ${loggerQueueSize}", "debug")
     if (loggerQueueSize == 0) {
         return
+    }
+
+    // Migration: Old configurations will not have prefBacklogLimit or prefBatchSizeLimit set
+    if (settings.prefBacklogLimit == null) {
+        app.updateSetting("prefBacklogLimit", (Long) 5000)
+    }
+    if (settings.prefBatchSizeLimit == null) {
+        app.updateSetting("prefBatchSizeLimit", (Long) 50)
     }
 
     // NB: older versions will not have state.postCount set
@@ -887,58 +866,48 @@ def writeQueuedDataToInfluxDb() {
         // A post is already running
         Long elapsed = timeNow - state.lastPost
         logger("Post of ${postCount} events already running (elapsed ${elapsed}ms)", "debug")
+        if (elapsed < 90000) {
+            // Come back later
+            runIn(30, writeQueuedDataToInfluxDb)
+            return
+        }
 
         // Failsafe in case handleInfluxResponse doesn't get called for some reason such as reboot
-        if (elapsed > 90000) {
-            logger("Post callback failsafe timeout", "debug")
-            state.postCount = 0
+        logger("Post callback failsafe timeout", "debug")
+        state.postCount = 0
 
-            // NB: prefBacklogLimit does not exist in older configurations
-            Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
-            if (loggerQueueSize > prefBacklogLimit) {
-                logger("Backlog limit of ${prefBacklogLimit} events exceeded: dropping ${postCount} events (failsafe)", "error")
-                listRemoveCount(loggerQueue, postCount)
-                loggerQueueSize = loggerQueue.size()
-            }
-        }
-        else {
-            // Check again
-            runIn(15, writeQueuedDataToInfluxDb)
-            return
+        if (loggerQueueSize > settings.prefBacklogLimit) {
+            logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${settings.prefBacklogLimit}: dropping ${postCount} events (failsafe)", "error")
+            state.loggerQueue = state.loggerQueue.drop(postCount)
+            loggerQueueSize -= postCount
         }
     }
 
-    // NB: prefBatchSizeLimit and prefBacklogLimit not exist in older configurations
-    Integer prefBatchSizeLimit = settings.prefBatchSizeLimit ?: 50
-    Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
     // If we have a backlog, log a warning
-    if (loggerQueueSize > prefBacklogLimit) {
+    if (loggerQueueSize > settings.prefBacklogLimit) {
         logger("Backlog of ${loggerQueueSize} events queued for InfluxDB", "warn")
     }
 
-    postCount = loggerQueueSize < prefBatchSizeLimit ? loggerQueueSize : prefBatchSizeLimit
+    postCount = loggerQueueSize < settings.prefBatchSizeLimit ? loggerQueueSize : settings.prefBatchSizeLimit
     state.postCount = postCount
     state.lastPost = timeNow
 
-    String data = loggerQueue.subList(0, postCount).toArray().join('\n')
+    String data = state.loggerQueue.subList(0, postCount).toArray().join('\n')
     // Uncommenting the following line will eventually drive your hub into the ground. Don't do it.
     // logger("Posting data to InfluxDB: ${state.uri}, Data: [${data}]", "debug")
-    try {
-        def postParams = [
-            uri: state.uri,
-            requestContentType: 'application/json',
-            contentType: 'application/json',
-            headers: state.headers,
-            ignoreSSLIssues: settings.prefIgnoreSSLIssues,
-            timeout: 60,
-            body: data
-        ]
-        def closure = [ postTime: timeNow ]
-        asynchttpPost('handleInfluxResponse', postParams, closure)
-    }
-    catch (e) {
-        logger("Error creating post to InfluxDB: ${e}", "error")
-    }
+
+    // Post it
+    def postParams = [
+        uri: state.uri,
+        requestContentType: 'application/json',
+        contentType: 'application/json',
+        headers: state.headers,
+        ignoreSSLIssues: settings.prefIgnoreSSLIssues,
+        timeout: 60,
+        body: data
+    ]
+    def closure = [ postTime: timeNow ]
+    asynchttpPost('handleInfluxResponse', postParams, closure)
 }
 
 /**
@@ -948,9 +917,8 @@ def writeQueuedDataToInfluxDb() {
  *
  *  NB: Function name handleInfluxResponse must be kept for backward compatibility
  **/
-def handleInfluxResponse(hubResponse, closure) {
-    loggerQueue = state.loggerQueue
-    if (loggerQueue == null) {
+void handleInfluxResponse(hubResponse, closure) {
+    if (state.loggerQueue == null) {
         // Failsafe if coming from an old version
         return
     }
@@ -967,34 +935,30 @@ def handleInfluxResponse(hubResponse, closure) {
     else {
         logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "warn")
 
-        // NB: prefBacklogLimit does not exist in older configurations
-        Integer prefBacklogLimit = settings.prefBacklogLimit ?: 5000
-        if (loggerQueue.size() <= prefBacklogLimit) {
+        // Migration: Old configurations will not have prefBacklogLimit set
+        if (settings.prefBacklogLimit == null) {
+            app.updateSetting("prefBacklogLimit", (Long) 5000)
+        }
+
+        if (state.loggerQueue.size() <= settings.prefBacklogLimit) {
+            if (state.loggerQueue.size() > postCount) {
+                logger("Backlog of ${state.loggerQueue.size()} events", "warn")
+            }
+
             // Try again later
             runIn(60, writeQueuedDataToInfluxDb)
             return
         }
 
-        logger("Backlog limit of ${prefBacklogLimit} events exceeded: dropping ${postCount} events", "error")
+        logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${settings.prefBacklogLimit}: dropping ${postCount} events", "error")
     }
 
     // Remove the post from the queue
-    listRemoveCount(loggerQueue, postCount)
+    state.loggerQueue = state.loggerQueue.drop(postCount)
 
     // Go again?
-    if (loggerQueue.size()) {
+    if (state.loggerQueue.size()) {
         runIn(1, writeQueuedDataToInfluxDb)
-    }
-}
-
-/**
- *  listRemoveCount()
- *
- *  Remove count items from the beginning of a list.
- **/
-private listRemoveCount(list, count) {
-    count.times {
-        list.remove(0)
     }
 }
 
@@ -1003,7 +967,7 @@ private listRemoveCount(list, count) {
  *
  *  Set up the database uri and header state variables.
  **/
-private setupDB() {
+private void setupDB() {
     String uri
     def headers = [:]
 
@@ -1029,8 +993,8 @@ private setupDB() {
 
     if (settings.prefAuthType == null || settings.prefAuthType == "basic") {
         if (settings.prefDatabaseUser && settings.prefDatabasePass) {
-            def userpass = "${settings.prefDatabaseUser}:${settings.prefDatabasePass}"
-            headers.put("Authorization", "Basic " + userpass.bytes.encodeBase64().toString())
+            String userpass = "${settings.prefDatabaseUser}:${settings.prefDatabasePass}"
+            headers.put("Authorization", "Basic " + userpass.bytes.encodeBase64())
         }
     }
     else if (settings.prefAuthType == "token") {
@@ -1052,64 +1016,26 @@ private setupDB() {
 }
 
 /**
- *  manageSubscriptions()
- *
- *  Configures subscriptions.
- **/
-private manageSubscriptions() {
-    logger("Establishing subscriptions", "debug")
-
-    // Unsubscribe:
-    unsubscribe()
-
-    // Subscribe to mode events:
-    if (prefLogModeEvents) {
-        subscribe(location, "mode", handleModeEvent)
-    }
-
-    if (accessAllAttributes) {
-        state.selectedAttr.each { entry ->
-            d = getDeviceObj(entry.key)
-            entry.value.each { attr ->
-                logger("Subscribing to attribute: ${attr}, for device: ${d}", "info")
-                subscribe(d, attr, handleEvent, ["filterEvents": filterEvents])
-            }
-        }
-    }
-    else {
-        // Subscribe to device attributes (iterate over each attribute for each device collection in state.deviceAttributes):
-        def devs // dynamic variable holding device collection.
-        state.deviceAttributes.each { da ->
-            devs = settings."${da.devices}"
-            if (devs && (da.attributes)) {
-                da.attributes.each { attr ->
-                    logger("Subscribing to attribute: ${attr}, for devices: ${da.devices}", "info")
-                    // There is no need to check if all devices in the collection have the attribute.
-                    subscribe(devs, attr, handleEvent, ["filterEvents": filterEvents])
-                }
-            }
-        }
-    }
-}
-
-/**
  *  logger()
  *
  *  Wrapper function for all logging.
  **/
-private logger(msg, level = "debug") {
+private void logger(String msg, String level = "debug") {
+    // Default value of 2 is "warn"
+    Integer loggingLevel = settings.configLoggingLevelIDE != null ? settings.configLoggingLevelIDE.toInteger() : 2
+
     switch (level) {
         case "error":
-            if (state.loggingLevelIDE >= 1) log.error msg
+            if (loggingLevel >= 1) log.error msg
             break
         case "warn":
-            if (state.loggingLevelIDE >= 2) log.warn msg
+            if (loggingLevel >= 2) log.warn msg
             break
         case "info":
-            if (state.loggingLevelIDE >= 3) log.info msg
+            if (loggingLevel >= 3) log.info msg
             break
         case "debug":
-            if (state.loggingLevelIDE >= 4) log.debug msg
+            if (loggingLevel >= 4) log.debug msg
             break
         default:
             log.debug msg
