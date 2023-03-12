@@ -87,7 +87,7 @@ definition(
 import groovy.transform.Field
 
 // Device type list
-@Field static final deviceTypeMap = [
+@Field static final Map<String,Map> deviceTypeMap = [
     'accelerometers': [ title: 'Accelerometers', capability: 'accelerationSensor', attributes: ['acceleration'] ],
     'alarms': [ title: 'Alarms', capability: 'alarm', attributes: ['alarm'] ],
     'batteries': [ title: 'Batteries', capability: 'battery', attributes: ['battery'] ],
@@ -338,7 +338,7 @@ void updated() {
     unsubscribe()
 
     // Create device subscriptions
-    def deviceAttrMap = getDeviceAttrMap()
+    Map<String,List> deviceAttrMap = getDeviceAttrMap()
     deviceAttrMap.each { device, attrList ->
         attrList.each { attr ->
             logger("Subscribing to ${device}: ${attr}", "info")
@@ -407,7 +407,7 @@ void updated() {
  * If using attribute selection, a device will appear only once in the array, with one or more attributes.
  * If using capability selection, a device may appear multiple times in the array, each time with a single attribue.
  **/
-private getDeviceAttrMap() {
+private Map<String,List> getDeviceAttrMap() {
     deviceAttrMap = [:]
 
     if (settings.accessAllAttributes) {
@@ -752,11 +752,11 @@ void softPoll() {
     logger("Keepalive check", "debug")
 
     // Get the map
-    def deviceAttrMap = getDeviceAttrMap()
+    Map<String,List> deviceAttrMap = getDeviceAttrMap()
 
     // Create the list
     Long timeNow = now()
-    def eventList = []
+    List<String> eventList = []
     deviceAttrMap.each { device, attrList ->
         attrList.each { attr ->
             if (device.latestState(attr)) {
@@ -796,7 +796,7 @@ void softPoll() {
  *
  *  Adds events to the InfluxDB queue.
  **/
-private void queueToInfluxDb(eventList) {
+private void queueToInfluxDb(List<String> eventList) {
     if (state.loggerQueue == null) {
         // Failsafe if coming from an old version
         state.loggerQueue = []
@@ -977,7 +977,7 @@ private void setupDB() {
 
     if (settings.prefAuthType == null || settings.prefAuthType == "basic") {
         if (settings.prefDatabaseUser && settings.prefDatabasePass) {
-            def userpass = "${settings.prefDatabaseUser}:${settings.prefDatabasePass}"
+            String userpass = "${settings.prefDatabaseUser}:${settings.prefDatabasePass}"
             headers.put("Authorization", "Basic " + userpass.bytes.encodeBase64())
         }
     }
@@ -1004,7 +1004,7 @@ private void setupDB() {
  *
  *  Wrapper function for all logging.
  **/
-private void logger(msg, level = "debug") {
+private void logger(String msg, String level = "debug") {
     // Default value of 2 is "warn"
     Integer loggingLevel = settings.configLoggingLevelIDE != null ? settings.configLoggingLevelIDE.toInteger() : 2
 
