@@ -69,6 +69,7 @@
  *                              Improve backlog warnings
  *                              Lower backlog limits to prevent issues with app database size
  *                              Normalize Hub information logging
+ *   2023-03-13 Denny Page      If post of size one fails, log the actual failed record
  *****************************************************************************************************************/
 
 definition(
@@ -951,6 +952,9 @@ void handleInfluxResponse(hubResponse, closure) {
         }
 
         logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${settings.prefBacklogLimit}: dropping ${postCount} events", "error")
+        if (postCount == 1) {
+            logger("Failed record was: ${state.loggerQueue[0]}", "error")
+        }
     }
 
     // Remove the post from the queue
