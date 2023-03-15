@@ -623,14 +623,17 @@ private String encodeDeviceEvent(evt) {
 
         // The Mysterious Case of The Button
         // binary value: released = 0, <any other value> = 1
-        case 'doubleTapped': // This is a strange one one, especially when it comes to softpoll
+        // Note that button attributes are excluded from softpoll
+        case 'doubleTapped':
         case 'held':
         case 'pushed':
             unit = 'button'
+            value = evt.value
             valueBinary = '1i'
             break
         case 'released':
             unit = 'button'
+            value = evt.value
             valueBinary = '0i'
             break
     }
