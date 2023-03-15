@@ -72,6 +72,7 @@
  *   2023-03-14 Denny Page      If post of size one fails, log the actual failed record
  *                              Ignore momentary attributes for keep alive
  *                              Display full uri in config page for convenience
+ *   2023-03-15 Denny Page      Always treat valid numbers (such as buttons) as numeric values for InfluxDB
  *****************************************************************************************************************/
 
 definition(
@@ -628,38 +629,29 @@ private String encodeDeviceEvent(evt) {
         case 'held':
         case 'pushed':
             unit = 'button'
-            value = evt.value
             valueBinary = '1i'
             break
         case 'released':
             unit = 'button'
-            value = evt.value
             valueBinary = '0i'
             break
     }
 
-    if (unit) {
-        // If a unit has been assigned above, but a value has not, create a string value using the escaped string value
-        // in the event. Note that if a value is already assigned in the above switch, it cannot be escaped here.
-        if (!value) {
-            value = '"' + escapeStringForInfluxDB(evt.value) + '"'
-        }
-    }
-    else {
-        // If a unit has not been assigned above, we assign it from the event unit.
+    if (!unit) {
+        // If a unit has not been assigned above, assign it from the event unit.
         unit = escapeStringForInfluxDB(evt.unit)
+    }
 
-        if (!value) {
-            if (evt.value.isNumber()) {
-                // It's a number, which is generally what we are expecting. Common numerical events such as carbonDioxide,
-                // power, energy, humidity, level, temperature, ultravioletIndex, voltage, etc. are handled here.
-                value = evt.value
-            }
-            else {
-                // It's not a number, which means that this should probably be explicityly handled in the case statement.
-                value = '"' + escapeStringForInfluxDB(evt.value) + '"'
-                logger("Found a string value not explicitly handled: Device Name: ${deviceName}, Event Name: ${evt.name}, Event Value: ${evt.value}", "warn")
-            }
+    if (!value) {
+        // If a value has not been assigned above, assign it from the event value.
+        if (evt.value.isNumber()) {
+            // It's a number. Common numerical events such as carbonDioxide, power, energy,
+            // humidity, level, temperature, ultravioletIndex, voltage, etc. are handled here.
+            value = evt.value
+        }
+        else {
+            // Everything else is a string.
+            value = '"' + escapeStringForInfluxDB(evt.value) + '"'
         }
     }
 
