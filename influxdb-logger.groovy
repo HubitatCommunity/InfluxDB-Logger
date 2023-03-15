@@ -69,7 +69,9 @@
  *                              Improve backlog warnings
  *                              Lower backlog limits to prevent issues with app database size
  *                              Normalize Hub information logging
- *   2023-03-13 Denny Page      If post of size one fails, log the actual failed record
+ *   2023-03-14 Denny Page      If post of size one fails, log the actual failed record
+ *                              Ignore momentary attributes for keep alive
+ *                              Display full uri in config page for convenience
  *****************************************************************************************************************/
 
 definition(
@@ -136,6 +138,11 @@ import groovy.transform.Field
     'windowShades': [ title: 'Window Shades', capability: 'windowShade', attributes: ['windowShade'] ]
 ]
 
+// Momentary attributes that should be ignored for keep alive
+@Field static final List<String> momentaryAttributes = [
+    'pushed', 'doubleTapped', 'held', 'released'
+]
+
 preferences {
     page(name: "setupMain")
     page(name: "connectionPage")
@@ -166,7 +173,7 @@ def setupMain() {
             href(
                 name: "href",
                 title: "InfluxDB connection",
-                description : prefDatabaseHost == null ? "Configure database connection parameters" : prefDatabaseHost,
+                description : prefDatabaseHost == null ? "Configure database connection parameters" : uriString(),
                 required: true,
                 page: "connectionPage"
             )
@@ -768,6 +775,10 @@ void softPoll() {
     List<String> eventList = []
     deviceAttrMap.each { device, attrList ->
         attrList.each { attr ->
+            if (momentaryAttributes.contains(attr)) {
+                logger("Keep alive for device ${device}(${attr}) suppressed - momentary attribute", "debug")
+                return
+            }
             if (device.latestState(attr)) {
                 Integer activityMinutes = (timeNow - device.latestState(attr).date.time) / 60000
                 if (activityMinutes > state.softPollingInterval) {
@@ -935,6 +946,9 @@ void handleInfluxResponse(hubResponse, closure) {
     }
     else {
         logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "warn")
+        if (postCount == 1) {
+            logger("Failed record was: ${state.loggerQueue[0]}", "error")
+        }
 
         // Migration: Old configurations will not have prefBacklogLimit set
         if (settings.prefBacklogLimit == null) {
@@ -952,9 +966,6 @@ void handleInfluxResponse(hubResponse, closure) {
         }
 
         logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${settings.prefBacklogLimit}: dropping ${postCount} events", "error")
-        if (postCount == 1) {
-            logger("Failed record was: ${state.loggerQueue[0]}", "error")
-        }
     }
 
     // Remove the post from the queue
@@ -967,13 +978,12 @@ void handleInfluxResponse(hubResponse, closure) {
 }
 
 /**
- *  setupDB()
+ *  uriString()
  *
- *  Set up the database uri and header state variables.
+ *  Format the uri string.
  **/
-private void setupDB() {
+private String uriString() {
     String uri
-    def headers = [:]
 
     if (settings?.prefDatabaseTls) {
         uri = "https://"
@@ -995,6 +1005,16 @@ private void setupDB() {
         uri += "/write?db=${settings.prefDatabaseName}"
     }
 
+    return uri
+}
+
+/**
+ *  setupDB()
+ *
+ *  Set up the database uri and header state variables.
+ **/
+private void setupDB() {
+    def headers = [:]
     if (settings.prefAuthType == null || settings.prefAuthType == "basic") {
         if (settings.prefDatabaseUser && settings.prefDatabasePass) {
             String userpass = "${settings.prefDatabaseUser}:${settings.prefDatabasePass}"
@@ -1005,10 +1025,10 @@ private void setupDB() {
         headers.put("Authorization", "Token ${settings.prefDatabaseToken}")
     }
 
-    state.uri = uri
+    state.uri = uriString()
     state.headers = headers
 
-    logger("InfluxDB URI: ${uri}", "info")
+    logger("InfluxDB URI: ${state.uri}", "info")
 
     // Clean up old state vars if present
     state.remove("databaseHost")
