@@ -73,6 +73,8 @@
  *                              Ignore momentary attributes for keep alive
  *                              Display full uri in config page for convenience
  *   2023-03-15 Denny Page      Always treat valid numbers (such as buttons) as numeric values for InfluxDB
+ *   2023-03-16 Denny Page      Fix issue of quotes surrounding hub name
+ *                              Fix issue of invalid three axis values being posted as a string
  *****************************************************************************************************************/
 
 definition(
@@ -467,158 +469,144 @@ void hubRestartHandler(evt) {
  **/
 private String encodeDeviceEvent(evt) {
     //
-    // Set up unit/value/valueBinary values
+    // This switch handles special processing for various events types
+    //
+    // Entries in the switch may optionally set the unit, value, or valueBinary fields.
+    // Any fields set in the switch are "final" and do not receive further processing,
+    // so all field assignments must be escaped as necessary.
+    //
+    // If not set in the switch, the unit and value fields will be defaulted as follows:
+    //
+    //   Unit:   If valueBinary has been set in the switch, the unit tag will be the
+    //           will be set to the name of the event (evt.name). Otherwise, the unit
+    //           tag will be set to the unit of the event (evt.unit). Both will be
+    //           escaped.
+    //   Value:  If the value in the event (evt.value) is a valid number, the value
+    //           will be InfluxDB's default numeric type (float). Othersie, the value
+    //           will be escaped and inclosed in double quotes as a string.
     //
     String unit = ''
     String value = ''
     String valueBinary = ''
-
     switch (evt.name) {
         case 'acceleration':
             // binary value: active = 1, <any other value> = 0
-            unit = 'acceleration'
             valueBinary = (evt.value == 'active') ? '1i' : '0i'
             break
         case 'alarm':
             // binary value: <any other value> = 1, off = 0
-            unit = 'alarm'
             valueBinary = (evt.value == 'off') ? '0i' : '1i'
             break
         case 'carbonMonoxide':
             // binary value: detected = 1, <any other value> = 0
-            unit = 'carbonMonoxide'
             valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'consumableStatus':
             // binary value: good = 1, <any other value> = 0
-            unit = 'consumableStatus'
             valueBinary = (evt.value == 'good') ? '1i' : '0i'
             break
         case 'contact':
             // binary value: closed = 1, <any other value> = 0
-            unit = 'contact'
             valueBinary = (evt.value == 'closed') ? '1i' : '0i'
             break
         case 'door':
             // binary value: closed = 1, <any other value> = 0
-            unit = 'door'
             valueBinary = (evt.value == 'closed') ? '1i' : '0i'
             break
         case 'filterStatus':
             // binary value: normal = 1, <any other value> = 0
-            unit = 'filterStatus'
             valueBinary = (evt.value == 'normal') ? '1i' : '0i'
             break
         case 'lock':
             // binary value: locked = 1, <any other value> = 0
-            unit = 'lock'
             valueBinary = (evt.value == 'locked') ? '1i' : '0i'
             break
         case 'motion':
             // binary value: active = 1, <any other value> = 0
-            unit = 'motion'
             valueBinary = (evt.value == 'active') ? '1i' : '0i'
             break
         case 'mute':
             // binary value: muted = 1, <any other value> = 0
-            unit = 'mute'
             valueBinary = (evt.value == 'muted') ? '1i' : '0i'
             break
         case 'naturalGas':
             // binary value: detected = 1, <any other value> = 0
-            unit = 'naturalGas'
             valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'powerSource':
             // binary value: mains = 1, <any other value> = 0
-            unit = 'powerSource'
             valueBinary = (evt.value == 'mains') ? '1i' : '0i'
             break
         case 'presence':
             // binary value: present = 1, <any other value> = 0
-            unit = 'presence'
             valueBinary = (evt.value == 'present') ? '1i' : '0i'
             break
         case 'shock':
             // binary value: detected = 1, <any other value> = 0
-            unit = 'shock'
             valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'sleeping':
             // binary value: sleeping = 1, <any other value> = 0
-            unit = 'sleeping'
             valueBinary = (evt.value == 'sleeping') ? '1i' : '0i'
             break
         case 'smoke':
             // binary value: detected = 1, <any other value> = 0
-            unit = 'smoke'
             valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'sound':
             // binary value: detected = 1, <any other value> = 0
-            unit = 'sound'
             valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'switch':
             // binary value: on = 1, <any other value> = 0
-            unit = 'switch'
             valueBinary = (evt.value == 'on') ? '1i' : '0i'
             break
         case 'tamper':
             // binary value: detected = 1, <any other value> = 0
-            unit = 'tamper'
             valueBinary = (evt.value == 'detected') ? '1i' : '0i'
             break
         case 'thermostatMode':
             // binary value: <any other value> = 1, off = 0
-            unit = 'thermostatMode'
             valueBinary = (evt.value == 'off') ? '0i' : '1i'
             break
         case 'thermostatFanMode':
             // binary value: <any other value> = 1, auto = 0
-            unit = 'thermostatFanMode'
             valueBinary = (evt.value == 'auto') ? '0i' : '1i'
             break
         case 'thermostatOperatingState':
             // binary value: heating or cooling = 1, <any other value> = 0
-            unit = 'thermostatOperatingState'
             valueBinary = (evt.value == 'heating' || evt.value == 'cooling') ? '1i' : '0i'
             break
         case 'thermostatSetpointMode':
             // binary value: followSchedule = 0, <any other value> = 1
-            unit = 'thermostatSetpointMode'
             valueBinary = (evt.value == 'followSchedule') ? '0i' : '1i'
             break
         case 'threeAxis':
             // threeAxis: Format to x,y,z values
-            unit = 'threeAxis'
+            unit = evt.name
             try {
                 def (_,x,y,z) = (evt.value =~ /^\[x:(-?[0-9]{1,3}),y:(-?[0-9]{1,3}),z:(-?[0-9]{1,3})\]$/)[0]
                 value = "valueX=${x}i,valueY=${y}i,valueZ=${z}i" // values are integers
             }
             catch (e) {
-                // value will end up as a string
+                value = "valueX=0i,valueY=0i,valueZ=0i"
                 logger("Invalid threeAxis format: ${evt.value}", "warn")
             }
             break
         case 'touch':
             // binary value: touched = 1, <any other value> = 0
-            unit = 'touch'
             valueBinary = (evt.value == 'touched') ? '1i' : '0i'
             break
         case 'valve':
             // binary value: open = 1, <any other value> = 0
-            unit = 'valve'
             valueBinary = (evt.value == 'open') ? '1i' : '0i'
             break
         case 'water':
             // binary value: wet = 1, <any other value> = 0
-            unit = 'water'
             valueBinary = (evt.value == 'wet') ? '1i' : '0i'
             break
         case 'windowShade':
             // binary value: closed = 1, <any other value> = 0
-            unit = 'windowShade'
             valueBinary = (evt.value == 'closed') ? '1i' : '0i'
             break
 
@@ -637,13 +625,20 @@ private String encodeDeviceEvent(evt) {
             break
     }
 
+    // If a unit tag has not been assigned above, assign it from the event.
     if (!unit) {
-        // If a unit has not been assigned above, assign it from the event unit.
-        unit = escapeStringForInfluxDB(evt.unit)
+        if (valueBinary) {
+            // If a binary value was set, use the event name as the unit tag.
+            unit = escapeStringForInfluxDB(evt.name)
+        }
+        else {
+            // Otherwise, use the event unit as the tag.
+            unit = escapeStringForInfluxDB(evt.unit)
+        }
     }
 
+    // If a value has not been assigned above, assign it from the event value.
     if (!value) {
-        // If a value has not been assigned above, assign it from the event value.
         if (evt.value.isNumber()) {
             // It's a number. Common numerical events such as carbonDioxide, power, energy,
             // humidity, level, temperature, ultravioletIndex, voltage, etc. are handled here.
@@ -667,7 +662,7 @@ private String encodeDeviceEvent(evt) {
     // Add hub name (location) tag if requested
     if (settings.includeHubInfo == null || settings.includeHubInfo) {
         String hubName = escapeStringForInfluxDB(location.name)
-        data += ",hubName=\"${hubName}\""
+        data += ",hubName=${hubName}"
     }
 
     // Add the unit and value(s)
@@ -727,7 +722,7 @@ private String encodeHubInfo(evt) {
 
     Long eventTimestamp = (evt?.unixTime ? evt.unixTime : now()) * 1e6       // Time is in milliseconds, but InfluxDB expects nanoseconds
 
-    String data = "_hubInfo,hubName=\"${hubName}\" localIP=\"${localIP}\",firmwareVersion=\"${firmwareVersion}\",upTime=\"${upTime}\",mode=\"${mode}\",sunriseTime=\"${sunriseTime}\",sunsetTime=\"${sunsetTime}\" ${eventTimestamp}"
+    String data = "_hubInfo,hubName=${hubName} localIP=\"${localIP}\",firmwareVersion=\"${firmwareVersion}\",upTime=\"${upTime}\",mode=\"${mode}\",sunriseTime=\"${sunriseTime}\",sunsetTime=\"${sunsetTime}\" ${eventTimestamp}"
     return data
 }
 
