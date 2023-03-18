@@ -1047,7 +1047,7 @@ private void setupDB() {
  *  Wrapper function for logging.
  **/
 private void logger(String msg, Integer level = logDebug) {
-    Integer loggingLevel = settings.configLoggingLevelIDE != null ? settings.configLoggingLevelIDE : logWarn
+    Integer loggingLevel = settings.configLoggingLevelIDE != null ? settings.configLoggingLevelIDE.toInteger() : logWarn
 
     switch (level) {
         case logError:
