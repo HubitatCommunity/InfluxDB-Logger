@@ -1,4 +1,4 @@
-/* groovylint-disable DuplicateListLiteral, DuplicateNumberLiteral, DuplicateStringLiteral, LineLength, MethodParameterTypeRequired, MethodReturnTypeRequired, MethodSize, NestedBlockDepth, NoDef, PublicMethodsBeforeNonPublicMethods, UnnecessaryGString, UnnecessaryGetter, UnnecessaryObjectReferences, UnusedMethodParameter, VariableTypeRequired */
+/* groovylint-disable LineLength, MethodParameterTypeRequired, MethodReturnTypeRequired, MethodSize, NestedBlockDepth, NoDef, PublicMethodsBeforeNonPublicMethods, UnnecessaryGString, UnnecessaryGetter, UnnecessaryObjectReferences, UnusedMethodParameter, VariableTypeRequired */
 /*****************************************************************************************************************
  *  Source: https://github.com/HubitatCommunity/InfluxDB-Logger
  *
@@ -75,7 +75,11 @@
  *   2023-03-15 Denny Page      Always treat valid numbers (such as buttons) as numeric values for InfluxDB
  *   2023-03-16 Denny Page      Fix issue of quotes surrounding hub name
  *                              Fix issue of invalid three axis values being posted as a string
+ *   2023-03-18 Denny Page      Fix valve attribute
+ *                              Clean up logging
  *****************************************************************************************************************/
+
+// Note: Items marked as "Migration" are intended to be kept for a period of time and then be removed circa end of 2023
 
 definition(
     name: "InfluxDB Logger",
@@ -135,7 +139,7 @@ import groovy.transform.Field
     'threeAxis': [ title: 'Three-axis (Orientation) Sensors', capability: 'threeAxis', attributes: ['threeAxis'] ],
     'touchs': [ title: 'Touch Sensors', capability: 'touchSensor', attributes: ['touch'] ],
     'uvs': [ title: 'UV Sensors', capability: 'ultravioletIndex', attributes: ['ultravioletIndex'] ],
-    'valves': [ title: 'Valves', capability: 'valve', attributes: ['contact'] ],
+    'valves': [ title: 'Valves', capability: 'valve', attributes: ['valve'] ],
     'volts': [ title: 'Voltage Meters', capability: 'voltageMeasurement', attributes: ['voltage'] ],
     'waterSensors': [ title: 'Water Sensors', capability: 'waterSensor', attributes: ['water'] ],
     'windowShades': [ title: 'Window Shades', capability: 'windowShade', attributes: ['windowShade'] ]
@@ -145,6 +149,19 @@ import groovy.transform.Field
 @Field static final List<String> momentaryAttributes = [
     'pushed', 'doubleTapped', 'held', 'released'
 ]
+
+@Field static final Map<Integer,String> logOptions = [
+    0 : "None",
+    1 : "Error",
+    2 : "Warning",
+    3 : "Info",
+    4 : "Debug"
+]
+@Field static final Integer logNone  = 0
+@Field static final Integer logError = 1
+@Field static final Integer logWarn  = 2
+@Field static final Integer logInfo  = 3
+@Field static final Integer logDebug = 4
 
 preferences {
     page(name: "setupMain")
@@ -160,14 +177,8 @@ def setupMain() {
                 name: "configLoggingLevelIDE",
                 title: "System log level - messages with this level and higher will be sent to the system log",
                 type: "enum",
-                options: [
-                    "0" : "None",
-                    "1" : "Error",
-                    "2" : "Warning",
-                    "3" : "Info",
-                    "4" : "Debug"
-                ],
-                defaultValue: "2",
+                options: logOptions,
+                defaultValue: "${logWarn}",
                 required: false
             )
         }
@@ -226,7 +237,7 @@ def setupMain() {
                 submitOnChange: true,
                 required: true
             )
-            if (prefSoftPollingInterval != "0") {
+            if (prefSoftPollingInterval.toInteger().toInteger()) {
                 input "prefPostHubInfo", "bool", title:"Post Hub information (IP, firmware, uptime, mode, sunrise/sunset) to InfluxDB", defaultValue: false
             }
             input "includeHubInfo", "bool", title:"Include Hub Name as a tag for device events", defaultValue: true
@@ -340,7 +351,7 @@ void uninstalled() {
 void updated() {
     // Update application name
     app.updateLabel(settings.appName)
-    logger("${app.label}: Updated", "info")
+    logger("${app.label}: Updated", logInfo)
 
     // Database config:
     setupDB()
@@ -352,7 +363,7 @@ void updated() {
     Map<String,List> deviceAttrMap = getDeviceAttrMap()
     deviceAttrMap.each { device, attrList ->
         attrList.each { attr ->
-            logger("Subscribing to ${device}: ${attr}", "info")
+            logger("Subscribing to ${device}: ${attr}", logInfo)
             subscribe(device, attr, handleEvent, ["filterEvents": filterEvents])
         }
     }
@@ -398,8 +409,7 @@ void updated() {
     // Flush any pending batch
     runIn(1, writeQueuedDataToInfluxDb)
 
-    // Clean up old state variables
-    // Remove around end of 2023
+    // Migration: Clean up old state variables
     state.remove("deviceAttributes")
     state.remove("deviceList")
     state.remove("loggingLevelIDE")
@@ -590,7 +600,7 @@ private String encodeDeviceEvent(evt) {
             }
             catch (e) {
                 value = "valueX=0i,valueY=0i,valueZ=0i"
-                logger("Invalid threeAxis format: ${evt.value}", "warn")
+                logger("Invalid threeAxis format: ${evt.value}", logWarn)
             }
             break
         case 'touch':
@@ -695,7 +705,7 @@ private String encodeDeviceEvent(evt) {
  *     represented as binary values (e.g. contact: closed = 1, open = 0)
  **/
 void handleEvent(evt) {
-    logger("Handle Event: ${evt}", "debug")
+    logger("Handle Event: ${evt}", logDebug)
 
     // Encode the event
     data = encodeDeviceEvent(evt)
@@ -732,7 +742,7 @@ private String encodeHubInfo(evt) {
  *  Log hub information when mode changes.
  **/
 void handleModeEvent(evt) {
-    logger("Handle Mode Event: ${evt}", "debug")
+    logger("Handle Mode Event: ${evt}", logDebug)
 
     // Encode the event
     data = encodeHubInfo(evt)
@@ -750,7 +760,7 @@ void handleModeEvent(evt) {
  *  NB: Function name softPoll must be kept for backward compatibility
  **/
 void softPoll() {
-    logger("Keepalive check", "debug")
+    logger("Keepalive check", logDebug)
 
     // Migration: Old configurations will not have prefPostHubInfo set
     if (settings.prefPostHubInfo == null) {
@@ -766,13 +776,13 @@ void softPoll() {
     deviceAttrMap.each { device, attrList ->
         attrList.each { attr ->
             if (momentaryAttributes.contains(attr)) {
-                logger("Keep alive for device ${device}(${attr}) suppressed - momentary attribute", "debug")
+                logger("Keep alive for device ${device}(${attr}) suppressed - momentary attribute", logDebug)
                 return
             }
             if (device.latestState(attr)) {
                 Integer activityMinutes = (timeNow - device.latestState(attr).date.time) / 60000
                 if (activityMinutes > state.softPollingInterval) {
-                    logger("Keep alive for device ${device}(${attr})", "debug")
+                    logger("Keep alive for device ${device}(${attr})", logDebug)
                     event = encodeDeviceEvent([
                         name: attr,
                         value: device.latestState(attr).value,
@@ -785,11 +795,11 @@ void softPoll() {
                     eventList.add(event)
                 }
                 else {
-                    logger("Keep alive for device ${device}(${attr}) unnecessary - last activity ${activityMinutes} minutes", "debug")
+                    logger("Keep alive for device ${device}(${attr}) unnecessary - last activity ${activityMinutes} minutes", logDebug)
                 }
             }
             else {
-                logger("Keep alive for device ${device}(${attr}) suppressed - last activity never", "debug")
+                logger("Keep alive for device ${device}(${attr}) suppressed - last activity never", logDebug)
             }
         }
     }
@@ -818,15 +828,17 @@ private void queueToInfluxDb(List<String> eventList) {
     priorLoggerQueueSize = state.loggerQueue.size()
     state.loggerQueue += eventList
     eventList.each { event ->
-        logger("Queued event: ${event}", "info")
+        logger("Queued event: ${event}", logInfo)
     }
 
     // If this is the first data in the batch, trigger the timer
     if (priorLoggerQueueSize == 0) {
-        logger("Scheduling batch", "debug")
-        // NB: prefBatchTimeLimit does not exist in older configurations
-        Integer prefBatchTimeLimit = settings.prefBatchTimeLimit ?: 60
-        runIn(prefBatchTimeLimit, writeQueuedDataToInfluxDb)
+        logger("Scheduling batch", logDebug)
+        // Migration: prefBatchTimeLimit does not exist in older configurations
+        if (settings.prefBatchTimeLimit == null) {
+            app.updateSetting("prefBatchTimeLimit", (Long) 60)
+        }
+        runIn(settings.prefBatchTimeLimit, writeQueuedDataToInfluxDb)
     }
 }
 
@@ -848,7 +860,7 @@ void writeQueuedDataToInfluxDb() {
     }
 
     Integer loggerQueueSize = state.loggerQueue.size()
-    logger("Number of events queued for InfluxDB: ${loggerQueueSize}", "debug")
+    logger("Number of events queued for InfluxDB: ${loggerQueueSize}", logDebug)
     if (loggerQueueSize == 0) {
         return
     }
@@ -861,13 +873,13 @@ void writeQueuedDataToInfluxDb() {
         app.updateSetting("prefBatchSizeLimit", (Long) 50)
     }
 
-    // NB: older versions will not have state.postCount set
+    // Migration: Transitioning from older versions will not have state.postCount set
     Integer postCount = state.postCount ?: 0
     Long timeNow = now()
     if (postCount) {
         // A post is already running
         Long elapsed = timeNow - state.lastPost
-        logger("Post of ${postCount} events already running (elapsed ${elapsed}ms)", "debug")
+        logger("Post of ${postCount} events already running (elapsed ${elapsed}ms)", logDebug)
         if (elapsed < 90000) {
             // Come back later
             runIn(30, writeQueuedDataToInfluxDb)
@@ -875,11 +887,11 @@ void writeQueuedDataToInfluxDb() {
         }
 
         // Failsafe in case handleInfluxResponse doesn't get called for some reason such as reboot
-        logger("Post callback failsafe timeout", "debug")
+        logger("Post callback failsafe timeout", logDebug)
         state.postCount = 0
 
         if (loggerQueueSize > settings.prefBacklogLimit) {
-            logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${settings.prefBacklogLimit}: dropping ${postCount} events (failsafe)", "error")
+            logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${settings.prefBacklogLimit}: dropping ${postCount} events (failsafe)", logError)
             state.loggerQueue = state.loggerQueue.drop(postCount)
             loggerQueueSize -= postCount
         }
@@ -887,7 +899,7 @@ void writeQueuedDataToInfluxDb() {
 
     // If we have a backlog, log a warning
     if (loggerQueueSize > settings.prefBacklogLimit) {
-        logger("Backlog of ${loggerQueueSize} events queued for InfluxDB", "warn")
+        logger("Backlog of ${loggerQueueSize} events queued for InfluxDB", logWarn)
     }
 
     postCount = loggerQueueSize < settings.prefBatchSizeLimit ? loggerQueueSize : settings.prefBatchSizeLimit
@@ -896,7 +908,7 @@ void writeQueuedDataToInfluxDb() {
 
     String data = state.loggerQueue.subList(0, postCount).toArray().join('\n')
     // Uncommenting the following line will eventually drive your hub into the ground. Don't do it.
-    // logger("Posting data to InfluxDB: ${state.uri}, Data: [${data}]", "debug")
+    // logger("Posting data to InfluxDB: ${state.uri}, Data: [${data}]", logDebug)
 
     // Post it
     def postParams = [
@@ -908,8 +920,7 @@ void writeQueuedDataToInfluxDb() {
         timeout: 60,
         body: data
     ]
-    def closure = [ postTime: timeNow ]
-    asynchttpPost('handleInfluxResponse', postParams, closure)
+    asynchttpPost('handleInfluxResponse', postParams, [ postTime: timeNow ])
 }
 
 /**
@@ -925,19 +936,19 @@ void handleInfluxResponse(hubResponse, closure) {
         return
     }
 
-    // NB: Transitioning from older versions will not have closure set
+    // Migration: Transitioning from older versions will not have closure set
     Double elapsed = (closure) ? (now() - closure.postTime) / 1000 : 0
-    // NB: Transitioning from older versions will not have postCount set
+    // Migration: Transitioning from older versions will not have postCount set
     Integer postCount = state.postCount ?: 0
     state.postCount = 0
 
     if (hubResponse.status < 400) {
-        logger("Post of ${postCount} events complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", "info")
+        logger("Post of ${postCount} events complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", logInfo)
     }
     else {
-        logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", "warn")
+        logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", logWarn)
         if (postCount == 1) {
-            logger("Failed record was: ${state.loggerQueue[0]}", "error")
+            logger("Failed record was: ${state.loggerQueue[0]}", logError)
         }
 
         // Migration: Old configurations will not have prefBacklogLimit set
@@ -947,7 +958,7 @@ void handleInfluxResponse(hubResponse, closure) {
 
         if (state.loggerQueue.size() <= settings.prefBacklogLimit) {
             if (state.loggerQueue.size() > postCount) {
-                logger("Backlog of ${state.loggerQueue.size()} events", "warn")
+                logger("Backlog of ${state.loggerQueue.size()} events", logWarn)
             }
 
             // Try again later
@@ -955,7 +966,7 @@ void handleInfluxResponse(hubResponse, closure) {
             return
         }
 
-        logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${settings.prefBacklogLimit}: dropping ${postCount} events", "error")
+        logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${settings.prefBacklogLimit}: dropping ${postCount} events", logError)
     }
 
     // Remove the post from the queue
@@ -1018,9 +1029,9 @@ private void setupDB() {
     state.uri = uriString()
     state.headers = headers
 
-    logger("InfluxDB URI: ${state.uri}", "info")
+    logger("InfluxDB URI: ${state.uri}", logInfo)
 
-    // Clean up old state vars if present
+    // Migration: Clean up old state vars if present
     state.remove("databaseHost")
     state.remove("databasePort")
     state.remove("databaseName")
@@ -1032,24 +1043,23 @@ private void setupDB() {
 /**
  *  logger()
  *
- *  Wrapper function for all logging.
+ *  Wrapper function for logging.
  **/
-private void logger(String msg, String level = "debug") {
-    // Default value of 2 is "warn"
-    Integer loggingLevel = settings.configLoggingLevelIDE != null ? settings.configLoggingLevelIDE.toInteger() : 2
+private void logger(String msg, Integer level = logDebug) {
+    Integer loggingLevel = settings.configLoggingLevelIDE != null ? settings.configLoggingLevelIDE.toInteger() : logWarn
 
     switch (level) {
-        case "error":
-            if (loggingLevel >= 1) log.error msg
+        case logError:
+            if (loggingLevel >= logError) log.error msg
             break
-        case "warn":
-            if (loggingLevel >= 2) log.warn msg
+        case logWarn:
+            if (loggingLevel >= logWarn) log.warn msg
             break
-        case "info":
-            if (loggingLevel >= 3) log.info msg
+        case logInfo:
+            if (loggingLevel >= logInfo) log.info msg
             break
-        case "debug":
-            if (loggingLevel >= 4) log.debug msg
+        case logDebug:
+            if (loggingLevel >= logDebug) log.debug msg
             break
         default:
             log.debug msg
