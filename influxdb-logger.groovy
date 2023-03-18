@@ -1048,21 +1048,21 @@ private void setupDB() {
  **/
 private void logger(String msg, Integer level = logDebug) {
     Integer loggingLevel = settings.configLoggingLevelIDE != null ? settings.configLoggingLevelIDE.toInteger() : logWarn
+    if (level > loggingLevel) {
+        return
+    }
 
     switch (level) {
         case logError:
-            if (loggingLevel >= logError) log.error msg
+            log.error msg
             break
         case logWarn:
-            if (loggingLevel >= logWarn) log.warn msg
+            log.warn msg
             break
         case logInfo:
-            if (loggingLevel >= logInfo) log.info msg
+            log.info msg
             break
         case logDebug:
-            if (loggingLevel >= logDebug) log.debug msg
-            break
-        default:
             log.debug msg
             break
     }
