@@ -237,7 +237,7 @@ def setupMain() {
                 submitOnChange: true,
                 required: true
             )
-            if (prefSoftPollingInterval.toInteger().toInteger()) {
+            if (prefSoftPollingInterval.toInteger()) {
                 input "prefPostHubInfo", "bool", title:"Post Hub information (IP, firmware, uptime, mode, sunrise/sunset) to InfluxDB", defaultValue: false
             }
             input "includeHubInfo", "bool", title:"Include Hub Name as a tag for device events", defaultValue: true
@@ -1047,7 +1047,7 @@ private void setupDB() {
  *  Wrapper function for logging.
  **/
 private void logger(String msg, Integer level = logDebug) {
-    Integer loggingLevel = settings.configLoggingLevelIDE != null ? settings.configLoggingLevelIDE.toInteger() : logWarn
+    Integer loggingLevel = settings.configLoggingLevelIDE != null ? settings.configLoggingLevelIDE : logWarn
 
     switch (level) {
         case logError:
