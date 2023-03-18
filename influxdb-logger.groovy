@@ -1,4 +1,4 @@
-/* groovylint-disable LineLength, MethodParameterTypeRequired, MethodReturnTypeRequired, MethodSize, NestedBlockDepth, NoDef, PublicMethodsBeforeNonPublicMethods, UnnecessaryGString, UnnecessaryGetter, UnnecessaryObjectReferences, UnusedMethodParameter, VariableTypeRequired */
+/* groovylint-disable LineLength, MethodParameterTypeRequired, MethodReturnTypeRequired, MethodSize, NestedBlockDepth, NoDef, ParameterReassignment, PublicMethodsBeforeNonPublicMethods, UnnecessaryGString, UnnecessaryGetter, UnnecessaryObjectReferences, UnusedMethodParameter, VariableTypeRequired */
 /*****************************************************************************************************************
  *  Source: https://github.com/HubitatCommunity/InfluxDB-Logger
  *
@@ -595,6 +595,7 @@ private String encodeDeviceEvent(evt) {
             // threeAxis: Format to x,y,z values
             unit = evt.name
             try {
+                /* groovylint-disable-next-line UnusedVariable, VariableName */
                 def (_,x,y,z) = (evt.value =~ /^\[x:(-?[0-9]{1,3}),y:(-?[0-9]{1,3}),z:(-?[0-9]{1,3})\]$/)[0]
                 value = "valueX=${x}i,valueY=${y}i,valueZ=${z}i" // values are integers
             }
