@@ -237,7 +237,7 @@ def setupMain() {
                 submitOnChange: true,
                 required: true
             )
-            if (prefSoftPollingInterval.toInteger()) {
+            if (prefSoftPollingInterval?.toInteger()) {
                 input "prefPostHubInfo", "bool", title:"Post Hub information (IP, firmware, uptime, mode, sunrise/sunset) to InfluxDB", defaultValue: false
             }
             input "includeHubInfo", "bool", title:"Include Hub Name as a tag for device events", defaultValue: true
