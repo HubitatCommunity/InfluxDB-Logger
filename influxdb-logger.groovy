@@ -77,6 +77,7 @@
  *                              Fix issue of invalid three axis values being posted as a string
  *   2023-03-18 Denny Page      Fix valve attribute
  *                              Clean up logging
+ *   2023-04-24 Denny Page      Don't send null units to InfluxDB
  *****************************************************************************************************************/
 
 // Note: Items marked as "Migration" are intended to be kept for a period of time and then be removed circa end of 2023
@@ -642,8 +643,8 @@ private String encodeDeviceEvent(evt) {
             // If a binary value was set, use the event name as the unit tag.
             unit = escapeStringForInfluxDB(evt.name)
         }
-        else {
-            // Otherwise, use the event unit as the tag.
+        else if (evt.unit) {
+            // Otherwise, use the event unit if defined.
             unit = escapeStringForInfluxDB(evt.unit)
         }
     }
@@ -677,13 +678,15 @@ private String encodeDeviceEvent(evt) {
     }
 
     // Add the unit and value(s)
-    data += ",unit=${unit} "
+    if (unit) {
+        data += ",unit=${unit}"
+    }
     if (value ==~ /^value.*/) {
         // Assignment has already been done above (e.g. threeAxis)
-        data += "${value}"
+        data += " ${value}"
     }
     else {
-        data += "value=${value}"
+        data += " value=${value}"
     }
     if (valueBinary) {
         data += ",valueBinary=${valueBinary}"
