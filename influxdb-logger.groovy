@@ -454,7 +454,7 @@ void updated() {
     state.remove("writeInterval")
     app.removeSetting("prefLogHubProperties")
     app.removeSetting("prefLogLocationProperties")
-    app.removeSetting("prefLogModeEvents")   
+    app.removeSetting("prefLogModeEvents")
 }
 
 /**
