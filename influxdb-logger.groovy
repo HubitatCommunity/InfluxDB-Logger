@@ -972,7 +972,7 @@ private void queueToInfluxDb(List<String> eventList) {
         // Failsafe if coming from an old version
         state.loggerQueue = []
     }
-    
+
     // Add the data to the queue
     priorLoggerQueueSize = state.loggerQueue.size()
     state.loggerQueue += eventList
