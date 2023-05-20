@@ -269,6 +269,33 @@ def setupMain() {
                 }
             }
         }
+        
+        section("Variables To Monitor:", hideable:true, hidden:false) {    
+            input "booleanVariables", "enum", title: "Select Boolean Variables", multiple: true, submitOnChange: true,
+                options: getAllGlobalVars().findAll{
+                    it.value.type == "boolean"
+                }.keySet().collect().sort{it.capitalize()}
+
+            input "numberVariables", "enum", title: "Select Number Variables", multiple: true, submitOnChange: true,
+                options: getAllGlobalVars().findAll{
+                    it.value.type == "integer"
+                }.keySet().collect().sort{it.capitalize()}
+
+            input "decimalVariables", "enum", title: "Select Decimal Variables", multiple: true, submitOnChange: true,
+                options: getAllGlobalVars().findAll{
+                    it.value.type == "bigdecimal"
+                }.keySet().collect().sort{it.capitalize()}
+
+            input "stringVariables", "enum", title: "Select String Variables", multiple: true, submitOnChange: true,
+                options: getAllGlobalVars().findAll{
+                    it.value.type == "string"
+                }.keySet().collect().sort{it.capitalize()}
+            
+            input "datetimeVariables", "enum", title: "Select DateTime Variables", multiple: true, submitOnChange: true,
+                options: getAllGlobalVars().findAll{
+                    it.value.type == "datetime"
+                }.keySet().collect().sort{it.capitalize()}
+        }
     }
 }
 
@@ -376,6 +403,12 @@ void updated() {
     if (prefPostHubInfo) {
         subscribe(location, "mode", handleModeEvent)
     }
+    
+    // Subscribe to variables
+    (booleanVariables+numberVariables+decimalVariables+stringVariables+datetimeVariables).each { name ->
+        subscribe(location, "variable:" + name, handleVariableEvent)
+        logger("Subscribing to variable ${name}", logInfo) // TODO: change back to Info
+    }
 
     // Clear out any prior schedules
     unschedule()
@@ -421,7 +454,7 @@ void updated() {
     state.remove("writeInterval")
     app.removeSetting("prefLogHubProperties")
     app.removeSetting("prefLogLocationProperties")
-    app.removeSetting("prefLogModeEvents")
+    app.removeSetting("prefLogModeEvents")   
 }
 
 /**
@@ -701,6 +734,71 @@ private String encodeDeviceEvent(evt) {
 }
 
 /**
+ *  encodeDeviceEvent(evt)
+ *
+ *  Builds data from variable polls or variable change events to send to InfluxDB.
+ *   - Escapes and quotes string values.
+ *   - Interprets binary variables to write to valueBinary
+ **/
+private String encodeVariableEvent(evt) {
+
+    String variableName = evt.name.substring(9)
+
+    String variableNameEscaped = escapeStringForInfluxDB(variableName)
+    String measurement = ""
+    String value = ""
+    String valueBinary = ""
+
+    if (booleanVariables.contains(variableName)) {
+        measurement = "binaryVariable"
+        value = evt.value
+        valueBinary = (evt.value == "true") ? '1i' : '0i'
+        logger("${evt.value}", logError)
+        logger("${evt.value == "true"}", logError)
+    }
+    else if (numberVariables.contains(variableName)){
+        measurement = "numberVariable"
+        value = evt.value
+    }
+    else if (decimalVariables.contains(variableName)){
+        measurement = "decimalVariable"
+        value = evt.value
+    }
+    else if (stringVariables.contains(variableName)){
+        measurement = "stringVariable"
+        value = '"' + escapeStringForInfluxDB(evt.value) + '"'
+    }
+    else if (datetimeVariables.contains(variableName)){
+        measurement = "datetimeVariable"
+        String datetime = evt.value
+        String[] datetimeSplitted = datetime.split(' ');
+        value = '"' + escapeStringForInfluxDB(evt.value) + '"'
+    }
+
+
+    String data = "${measurement},variableName=${variableNameEscaped}"
+
+    // Add hub name (location) tag if requested
+    if (settings.includeHubInfo == null || settings.includeHubInfo) {
+        String hubName = escapeStringForInfluxDB(location.name)
+        data += ",hubName=${hubName}"
+    }
+
+    data += " value=${value}"
+
+    if (valueBinary) {
+        data += ",valueBinary=${valueBinary}"
+    }
+
+    // Add the event timestamp
+    long eventTimestamp = evt.unixTime * 1e6 // milliseconds to nanoseconds
+    data += " ${eventTimestamp}"
+
+    // Return the completed string
+    return(data)
+}
+
+/**
  *  handleEvent(evt)
  *
  *  Builds data to send to InfluxDB.
@@ -713,6 +811,21 @@ void handleEvent(evt) {
 
     // Encode the event
     data = encodeDeviceEvent(evt)
+
+    // Add event to the queue for InfluxDB
+    queueToInfluxDb([data])
+}
+
+/**
+ *  handleVariableEvent(evt)
+ *
+ *  Build InfluxDB write string from variable change event.
+ **/
+void handleVariableEvent(evt) {
+    logger("Handle Variable Event: ${evt}", logDebug)
+
+    // Encode the event
+    data = encodeVariableEvent(evt)
 
     // Add event to the queue for InfluxDB
     queueToInfluxDb([data])
@@ -813,8 +926,40 @@ void softPoll() {
         eventList.add(encodeHubInfo(null))
     }
 
+    eventList += getVariableEventList()
+
     // Queue the events
     queueToInfluxDb(eventList)
+}
+
+/**
+ *  getVariableEventList()
+ *
+ *  Polls all variables on the hub, read the variables that InfluxDB logger is tracking, 
+ *  and create events to be queued to write to InfluxDB.
+ **/
+List<String> getVariableEventList() {
+
+    // Get all variables
+    Map<String,Map<String,String>> variables = getAllGlobalVars()
+
+    // Create the list
+    Long timeNow = now()
+    List<String> eventList = []
+
+    (booleanVariables+numberVariables+decimalVariables+stringVariables+datetimeVariables).each { name ->
+        Map<String, String> variable = variables[name]
+        String event = encodeVariableEvent([
+            name: "variable:" + name,
+            value: variable.value,
+            unixTime: timeNow
+        ])
+        eventList.add(event)
+        logger("${variable.value}", logError)
+    }
+
+    // Return the events
+    return(eventList)
 }
 
 /**
@@ -827,7 +972,7 @@ private void queueToInfluxDb(List<String> eventList) {
         // Failsafe if coming from an old version
         state.loggerQueue = []
     }
-
+    
     // Add the data to the queue
     priorLoggerQueueSize = state.loggerQueue.size()
     state.loggerQueue += eventList
