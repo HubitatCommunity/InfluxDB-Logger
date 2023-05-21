@@ -401,11 +401,19 @@ void updated() {
 
     // Subscribe to mode events if requested
     if (prefPostHubInfo) {
-        subscribe(location, "mode", handleModeEvent)
+        subscribe(location, "mode", handleModeEvent, ["filterEvents": filterEvents])
     }
     
     // Subscribe to variables
-    (booleanVariables+numberVariables+decimalVariables+stringVariables+datetimeVariables).each { name ->
+    String<List> subscribedVariables = []
+    
+    if (booleanVariables) { subscribedVariables += booleanVariables }
+    if (numberVariables) { subscribedVariables += numberVariables }
+    if (decimalVariables) { subscribedVariables += decimalVariables }
+    if (stringVariables) { subscribedVariables += stringVariables }
+    if (datetimeVariables) { subscribedVariables += datetimeVariables }
+    
+    subscribedVariables.each { name ->
         subscribe(location, "variable:" + name, handleVariableEvent)
         logger("Subscribing to variable ${name}", logInfo)
     }
