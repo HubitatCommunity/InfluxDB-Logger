@@ -377,6 +377,7 @@ void uninstalled() {
  *  Runs when app settings are changed.
  **/
 void updated() {
+    softPoll()
     // Update application name
     app.updateLabel(settings.appName)
     logger("${app.label}: Updated", logInfo)
@@ -752,7 +753,7 @@ private String encodeVariableEvent(evt) {
     if (booleanVariables.contains(variableName)) {
         measurement = "binaryVariable"
         value = evt.value
-        valueBinary = (evt.value == "true") ? '1i' : '0i'
+        valueBinary = Boolean.valueOf(evt.value) ? '1i' : '0i'
     }
     else if (numberVariables.contains(variableName)){
         measurement = "numberVariable"
@@ -772,7 +773,6 @@ private String encodeVariableEvent(evt) {
         String[] datetimeSplitted = datetime.split(' ');
         value = '"' + escapeStringForInfluxDB(evt.value) + '"'
     }
-
 
     String data = "${measurement},variableName=${variableNameEscaped}"
 
@@ -939,14 +939,22 @@ void softPoll() {
 List<String> getVariableEventList() {
 
     // Get all variables
-    Map<String,Map<String,String>> variables = getAllGlobalVars()
+    Map<String,Map<String,String>> allVariables = getAllGlobalVars()
 
     // Create the list
     Long timeNow = now()
     List<String> eventList = []
 
-    (booleanVariables+numberVariables+decimalVariables+stringVariables+datetimeVariables).each { name ->
-        Map<String, String> variable = variables[name]
+    List<String> subscribedVariables = []
+
+    if (booleanVariables) { subscribedVariables += booleanVariables }
+    if (numberVariables) { subscribedVariables += numberVariables }
+    if (decimalVariables) { subscribedVariables += decimalVariables }
+    if (stringVariables) { subscribedVariables += stringVariables }
+    if (datetimeVariables) { subscribedVariables += datetimeVariables }
+        
+    subscribedVariables.each { name ->
+        Map<String, String> variable = allVariables[name]
         String event = encodeVariableEvent([
             name: "variable:" + name,
             value: variable.value,
