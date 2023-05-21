@@ -407,7 +407,7 @@ void updated() {
     // Subscribe to variables
     (booleanVariables+numberVariables+decimalVariables+stringVariables+datetimeVariables).each { name ->
         subscribe(location, "variable:" + name, handleVariableEvent)
-        logger("Subscribing to variable ${name}", logInfo) // TODO: change back to Info
+        logger("Subscribing to variable ${name}", logInfo)
     }
 
     // Clear out any prior schedules
