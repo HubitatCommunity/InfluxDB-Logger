@@ -377,7 +377,6 @@ void uninstalled() {
  *  Runs when app settings are changed.
  **/
 void updated() {
-    softPoll()
     // Update application name
     app.updateLabel(settings.appName)
     logger("${app.label}: Updated", logInfo)
