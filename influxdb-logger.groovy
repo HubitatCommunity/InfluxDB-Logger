@@ -753,8 +753,6 @@ private String encodeVariableEvent(evt) {
         measurement = "binaryVariable"
         value = evt.value
         valueBinary = (evt.value == "true") ? '1i' : '0i'
-        logger("${evt.value}", logError)
-        logger("${evt.value == "true"}", logError)
     }
     else if (numberVariables.contains(variableName)){
         measurement = "numberVariable"
