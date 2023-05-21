@@ -953,7 +953,6 @@ List<String> getVariableEventList() {
             unixTime: timeNow
         ])
         eventList.add(event)
-        logger("${variable.value}", logError)
     }
 
     // Return the events
