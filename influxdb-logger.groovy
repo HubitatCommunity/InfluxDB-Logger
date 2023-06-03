@@ -269,35 +269,35 @@ def setupMain() {
                 }
             }
         }
-        
-        section("Variables To Monitor:", hideable:true, hidden:false) {    
+
+        section("Variables To Monitor:", hideable:true, hidden:false) {
             input "booleanVariables", "enum", title: "Select Boolean Variables", multiple: true, submitOnChange: true,
-                options: getAllGlobalVars().findAll{
+                options: getAllGlobalVars().findAll {
                     it.value.type == "boolean"
-                }.keySet().collect().sort{it.capitalize()}
+                }.keySet().collect().sort { it.capitalize() }
 
             input "numberVariables", "enum", title: "Select Number Variables", multiple: true, submitOnChange: true,
-                options: getAllGlobalVars().findAll{
+                options: getAllGlobalVars().findAll {
                     it.value.type == "integer"
-                }.keySet().collect().sort{it.capitalize()}
+                }.keySet().collect().sort { it.capitalize() }
 
             input "decimalVariables", "enum", title: "Select Decimal Variables", multiple: true, submitOnChange: true,
-                options: getAllGlobalVars().findAll{
+                options: getAllGlobalVars().findAll {
                     it.value.type == "bigdecimal"
-                }.keySet().collect().sort{it.capitalize()}
+                }.keySet().collect().sort { it.capitalize() }
 
             input "stringVariables", "enum", title: "Select String Variables", multiple: true, submitOnChange: true,
-                options: getAllGlobalVars().findAll{
+                options: getAllGlobalVars().findAll {
                     it.value.type == "string"
-                }.keySet().collect().sort{it.capitalize()}
-            
+                }.keySet().collect().sort { it.capitalize() }
+
             input "datetimeVariables", "enum", title: "Select DateTime Variables", multiple: true, submitOnChange: true,
-                options: getAllGlobalVars().findAll{
+                options: getAllGlobalVars().findAll {
                     it.value.type == "datetime"
-                }.keySet().collect().sort{it.capitalize()}
-        }
-    }
-}
+                }.keySet().collect().sort { it.capitalize() }
+                }
+                }
+                }
 
 def connectionPage() {
     dynamicPage(name: "connectionPage", title: "Connection Properties", install: false, uninstall: false) {
@@ -403,18 +403,18 @@ void updated() {
     if (prefPostHubInfo) {
         subscribe(location, "mode", handleModeEvent, ["filterEvents": filterEvents])
     }
-    
+
     // Subscribe to variables
     String<List> subscribedVariables = []
-    
+
     if (booleanVariables) { subscribedVariables += booleanVariables }
     if (numberVariables) { subscribedVariables += numberVariables }
     if (decimalVariables) { subscribedVariables += decimalVariables }
     if (stringVariables) { subscribedVariables += stringVariables }
     if (datetimeVariables) { subscribedVariables += datetimeVariables }
-    
+
     subscribedVariables.each { name ->
-        subscribe(location, "variable:" + name, handleVariableEvent)
+        subscribe(location, "variable:" + name, handleVariableEvent, ["filterEvents": filterEvents])
         logger("Subscribing to variable ${name}", logInfo)
     }
 
@@ -749,7 +749,6 @@ private String encodeDeviceEvent(evt) {
  *   - Interprets binary variables to write to valueBinary
  **/
 private String encodeVariableEvent(evt) {
-
     String variableName = evt.name.substring(9)
 
     String variableNameEscaped = escapeStringForInfluxDB(variableName)
@@ -762,22 +761,22 @@ private String encodeVariableEvent(evt) {
         value = evt.value
         valueBinary = Boolean.valueOf(evt.value) ? '1i' : '0i'
     }
-    else if (numberVariables.contains(variableName)){
+    else if (numberVariables.contains(variableName)) {
         measurement = "numberVariable"
         value = evt.value
     }
-    else if (decimalVariables.contains(variableName)){
+    else if (decimalVariables.contains(variableName)) {
         measurement = "decimalVariable"
         value = evt.value
     }
-    else if (stringVariables.contains(variableName)){
+    else if (stringVariables.contains(variableName)) {
         measurement = "stringVariable"
         value = '"' + escapeStringForInfluxDB(evt.value) + '"'
     }
-    else if (datetimeVariables.contains(variableName)){
+    else if (datetimeVariables.contains(variableName)) {
         measurement = "datetimeVariable"
         String datetime = evt.value
-        String[] datetimeSplitted = datetime.split(' ');
+        String[] datetimeSplitted = datetime.split(' ')
         value = '"' + escapeStringForInfluxDB(evt.value) + '"'
     }
 
@@ -940,11 +939,10 @@ void softPoll() {
 /**
  *  getVariableEventList()
  *
- *  Polls all variables on the hub, read the variables that InfluxDB logger is tracking, 
+ *  Polls all variables on the hub, read the variables that InfluxDB logger is tracking,
  *  and create events to be queued to write to InfluxDB.
  **/
 List<String> getVariableEventList() {
-
     // Get all variables
     Map<String,Map<String,String>> allVariables = getAllGlobalVars()
 
@@ -959,7 +957,7 @@ List<String> getVariableEventList() {
     if (decimalVariables) { subscribedVariables += decimalVariables }
     if (stringVariables) { subscribedVariables += stringVariables }
     if (datetimeVariables) { subscribedVariables += datetimeVariables }
-        
+
     subscribedVariables.each { name ->
         Map<String, String> variable = allVariables[name]
         String event = encodeVariableEvent([
