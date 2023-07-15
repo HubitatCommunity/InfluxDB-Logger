@@ -78,6 +78,7 @@
  *   2023-03-18 Denny Page      Fix valve attribute
  *                              Clean up logging
  *   2023-04-24 Denny Page      Don't send null units to InfluxDB
+ *   2023-07-15 Scott Chen      Support hub variables
  *****************************************************************************************************************/
 
 // Note: Items marked as "Migration" are intended to be kept for a period of time and then be removed circa end of 2023
