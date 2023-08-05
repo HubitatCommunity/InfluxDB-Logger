@@ -217,7 +217,7 @@ def setupMain() {
                 required: true
             )
         }
-
+        
         section("\n<h3>Event Handling:</h3>") {
             input(
                 // NB: Called prefSoftPollingInterval for backward compatibility with prior versions
@@ -269,6 +269,13 @@ def setupMain() {
                 }
             }
         }
+        section('<b>Notification Options</b>') {
+            input 'notifyEnabled', 'bool', title: 'Enable Notification', required: false, defaultValue: false
+            input name: 'notificationDevice', type: 'capability.notification', title: 'Send notification of rate limit consumption :', multiple: true
+            input 'backlogNotifyLimit', 'number', title: 'Backlog Limit to send notification for backlog growing.', required: false , range: '1..5000', defaultValue: 500
+            input 'backlogNotifyFreq', 'number', title: 'Minimum time limit between notifications in min.', required: false , range: '1..1440', defaultValue: 500
+        }
+        
     }
 }
 
@@ -946,11 +953,29 @@ void handleInfluxResponse(hubResponse, closure) {
     Integer postCount = state.postCount ?: 0
     state.postCount = 0
 
+    // Migration: Old configurations will not have dbStatus.
+    if (state.dbStatus == null) {
+        state.dbStatus = "success"
+    } 
+
     if (hubResponse.status < 400) {
         logger("Post of ${postCount} events complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", logInfo)
+        if (state.dbStatus == "failed") {
+            state.dbStatus = "success"
+            state.dbStatusChg = now()
+            sendnotification(state.dbStatus, backlogNotifyLimit)
+        }  
     }
     else {
         logger("Post of ${postCount} events failed - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}, Error: ${hubResponse.errorMessage}, Headers: ${hubResponse.headers}, Data: ${data}", logWarn)
+        if (state.dbStatus == "success") {
+            state.dbStatus = "failed"
+            state.dbStatusChg = now()
+            state.lastNotification = now()-(backlogNotifyLimit*60000)
+        } 
+        if ((state.loggerQueue.size() > backlogNotifyLimit) && ((now() - state.lastNotification) > (backlogNotifyFreq*60000))){
+            sendnotification(state.dbStatus, backlogNotifyLimit)
+        } 
         if (postCount == 1) {
             logger("Failed record was: ${state.loggerQueue[0]}", logError)
         }
@@ -1068,6 +1093,23 @@ private void logger(String msg, Integer level = logDebug) {
         case logDebug:
             log.debug msg
             break
+    }
+}
+
+/**
+ *  sendnotification()
+ *
+ *  Notification for failed Logging.
+ **/
+private def sendnotification (type, value) {
+    if (notifyEnabled) {
+        if (state.loggerQueue.size() > backlogNotifyLimit) {
+            String notificationText = "InfluxDB Logger DB post state is ${type}: Current Backlog is ${state.loggerQueue.size()}."
+            notificationDevice?.each {
+            it.deviceNotification(notificationText)
+            state.lastNotification = now()
+            }
+        }
     }
 }
 
