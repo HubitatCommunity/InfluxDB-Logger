@@ -17,3 +17,7 @@ Click 'Install', 'From URL', and enter `https://raw.githubusercontent.com/Hubita
 ### Manual
 
 See https://docs2.hubitat.com/how-to/install-custom-apps for a general overview.
+
+## Support
+
+Please post issues to the forum thread at https://community.hubitat.com/t/influxdb-logger-v2-support.
