@@ -246,7 +246,7 @@ def setupMain() {
         }
 
         section("Devices To Monitor:", hideable:true, hidden:false) {
-            input "accessAllAttributes", "bool", title:"Advanced attribute seletion?", defaultValue: false, submitOnChange: true
+            input "accessAllAttributes", "bool", title:"Advanced attribute selection?", defaultValue: false, submitOnChange: true
 
             if (accessAllAttributes) {
                 input name: "allDevices", type: "capability.*", title: "Selected Devices", multiple: true, required: false, submitOnChange: true
