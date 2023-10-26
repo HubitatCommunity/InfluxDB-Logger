@@ -78,6 +78,8 @@
  *   2023-03-18 Denny Page      Fix valve attribute
  *                              Clean up logging
  *   2023-04-24 Denny Page      Don't send null units to InfluxDB
+ *   2023-10-26 Denny Page      Add support for publishing queue length as a hub variable
+ *                              Add support for publishing hub variable events (idea from Scott Chen)
  *****************************************************************************************************************/
 
 // Note: Items marked as "Migration" are intended to be kept for a period of time and then be removed circa end of 2023
@@ -123,7 +125,7 @@ import groovy.transform.Field
     'peds': [ title: 'Pedometers', capability: 'stepSensor', attributes: ['steps', 'goal'] ],
     'phMeters': [ title: 'pH Meters', capability: 'pHMeasurement', attributes: ['pH'] ],
     'powerMeters': [ title: 'Power Meters', capability: 'powerMeter', attributes: ['power'] ],
-    'powerSources': [ title: 'Power Sources', capability: 'powerSource', attributes: ['powerSource'] ],
+    'powerSources': [ title: 'Power Sources', capability: 'powerSources', attributes: ['powerSource'] ],
     'presences': [ title: 'Presence Sensors', capability: 'presenceSensor', attributes: ['presence'] ],
     'pressures': [ title: 'Pressure Sensors', capability: 'pressureMeasurement', attributes: ['pressure'] ],
     'shockSensors': [ title: 'Shock Sensors', capability: 'shockSensor', attributes: ['shock'] ],
@@ -172,8 +174,15 @@ preferences {
 def setupMain() {
     dynamicPage(name: "setupMain", title: "<h2>InfluxDB Logger</h2>", install: true, uninstall: true) {
         section("<h3>\nGeneral Settings:</h3>") {
-            input "appName", "text", title: "Aplication Name", multiple: false, required: true, submitOnChange: true, defaultValue: app.getLabel()
-
+            input(
+                "appName",
+                "text",
+                title: "Aplication Name",
+                multiple: false,
+                required: true,
+                submitOnChange: true,
+                defaultValue: app.getLabel()
+            )
             input(
                 name: "configLoggingLevelIDE",
                 title: "System log level - messages with this level and higher will be sent to the system log",
@@ -188,7 +197,7 @@ def setupMain() {
             href(
                 name: "href",
                 title: "InfluxDB connection",
-                description : prefDatabaseHost == null ? "Configure database connection parameters" : uriString(),
+                description: prefDatabaseHost == null ? "Configure database connection parameters" : uriString(),
                 required: true,
                 page: "connectionPage"
             )
@@ -216,6 +225,14 @@ def setupMain() {
                 defaultValue: "5000",
                 required: true
             )
+            input(
+                name: "prefQueueSizeVariable",
+                title: "Record InfluxDB backlog size in hub variable (optional, off by default)",
+                type: "enum",
+                required: false,
+                options: getGlobalVarsByType("integer").keySet().sort(){ it.capitalize() }
+            )
+            paragraph "Notes: Queue size variable must be type integer (Number), and is updated following each post to InfluxDB."
         }
 
         section("\n<h3>Event Handling:</h3>") {
@@ -239,18 +256,44 @@ def setupMain() {
                 required: true
             )
             if (prefSoftPollingInterval?.toInteger()) {
-                input "prefPostHubInfo", "bool", title:"Post Hub information (IP, firmware, uptime, mode, sunrise/sunset) to InfluxDB", defaultValue: false
+                input(
+                    "prefPostHubInfo",
+                    "bool",
+                    title: "Post Hub information (IP, firmware, uptime, mode, sunrise/sunset) to InfluxDB",
+                    defaultValue: false
+                )
             }
-            input "includeHubInfo", "bool", title:"Include Hub Name as a tag for device events", defaultValue: true
-            input "filterEvents", "bool", title:"Only post device events to InfluxDB when the data value changes", defaultValue: true
+            input(
+                "includeHubInfo",
+                "bool",
+                title: "Include Hub Name as a tag for events",
+                defaultValue: true
+            )
+            input(
+                "filterEvents",
+                "bool",
+                title: "Only post device events to InfluxDB when the data value changes",
+                defaultValue: true
+            )
         }
 
         section("Devices To Monitor:", hideable:true, hidden:false) {
-            input "accessAllAttributes", "bool", title:"Advanced attribute selection?", defaultValue: false, submitOnChange: true
-
+            input(
+                "accessAllAttributes",
+                "bool",
+                title: "Advanced attribute selection?",
+                defaultValue: false,
+                submitOnChange: true
+            )
             if (accessAllAttributes) {
-                input name: "allDevices", type: "capability.*", title: "Selected Devices", multiple: true, required: false, submitOnChange: true
-
+                input(
+                    name: "allDevices",
+                    type: "capability.*",
+                    title: "Selected Devices",
+                    multiple: true,
+                    required: false,
+                    submitOnChange: true
+                )
                 settings.allDevices.each { device ->
                     deviceId = device.getId()
                     attrList = device.getSupportedAttributes().unique()
@@ -259,15 +302,54 @@ def setupMain() {
                         attrList.each { attr ->
                             options.add("${attr}")
                         }
-                        input name:"attrForDev${deviceId}", type: "enum", title: "$device", options: options.sort(), multiple: true, required: false, submitOnChange: true
+                        input(
+                            name:"attrForDev${deviceId}",
+                            type: "enum",
+                            title: "$device",
+                            options: options.sort(),
+                            multiple: true,
+                            required: false,
+                            submitOnChange: true )
                     }
                 }
             }
             else {
                 deviceTypeMap.each { name, entry ->
-                    input "${name}", "capability.${entry.capability}", title: "${entry.title}", multiple: true, required: false
+                    input(
+                        "${name}",
+                        "capability.${entry.capability}",
+                        title: "${entry.title}",
+                        multiple: true,
+                        required: false
+                    )
                 }
             }
+        }
+
+        section("Variables To Monitor:", hideable:true, hidden:false) {
+            List vars = []
+            getAllGlobalVars().each {
+                // The format of datetime variables is a bit of a show, making
+                // them very difficult to normalize. Also, datetime values are
+                // of limited value for time series data, so they are excluded.
+                switch (it.value.type) {
+                    case 'integer':
+                    case 'bigdecimal':
+                    case 'boolean':
+                    case 'string':
+                        vars += it.key
+                        break
+                }
+            }
+            input(
+                "variableList",
+                "enum",
+                title: "Selected Variables (datetime variables are not supported)",
+                multiple: true,
+                required: false,
+                submitOnChange: true,
+                options: vars.sort(){ it.capitalize() }
+            )
         }
     }
 }
@@ -275,13 +357,35 @@ def setupMain() {
 def connectionPage() {
     dynamicPage(name: "connectionPage", title: "Connection Properties", install: false, uninstall: false) {
         section {
-            input "prefDatabaseTls", "bool", title:"Use TLS?", defaultValue: false, submitOnChange: true
+            input(
+                "prefDatabaseTls",
+                "bool",
+                title: "Use TLS?",
+                defaultValue: false,
+                submitOnChange: true
+            )
             if (prefDatabaseTls) {
-                input "prefIgnoreSSLIssues", "bool", title:"Ignore SSL cert verification issues", defaultValue:false
+                input(
+                    "prefIgnoreSSLIssues",
+                    "bool",
+                    title: "Ignore SSL cert verification issues",
+                    defaultValue: false
+                )
             }
-
-            input "prefDatabaseHost", "text", title: "Host", defaultValue: "", required: true
-            input "prefDatabasePort", "text", title : "Port", defaultValue : prefDatabaseTls ? "443" : "8086", required : false
+            input(
+                "prefDatabaseHost",
+                "text",
+                title: "Host",
+                defaultValue: "",
+                required: true
+            )
+            input(
+                "prefDatabasePort",
+                "text",
+                title: "Port",
+                defaultValue: prefDatabaseTls ? "443" : "8086",
+                required: false
+            )
             input(
                 name: "prefInfluxVer",
                 title: "Influx Version",
@@ -294,11 +398,29 @@ def connectionPage() {
                 submitOnChange: true
             )
             if (prefInfluxVer == "1") {
-                input "prefDatabaseName", "text", title: "Database Name", defaultValue: "Hubitat", required: true
+                input(
+                    "prefDatabaseName",
+                    "text",
+                    title: "Database Name",
+                    defaultValue: "Hubitat",
+                    required: true
+                )
             }
             else if (prefInfluxVer == "2") {
-                input "prefOrg", "text", title: "Org", defaultValue: "", required: true
-                input "prefBucket", "text", title: "Bucket", defaultValue: "", required: true
+                input(
+                    "prefOrg",
+                    "text",
+                    title: "Org",
+                    defaultValue: "",
+                    required: true
+                )
+                input(
+                    "prefBucket",
+                    "text",
+                    title: "Bucket",
+                    defaultValue: "",
+                    required: true
+                )
             }
             input(
                 name: "prefAuthType",
@@ -313,11 +435,28 @@ def connectionPage() {
                 submitOnChange: true
             )
             if (prefAuthType == "basic") {
-                input "prefDatabaseUser", "text", title: "Username", defaultValue: "", required: true
-                input "prefDatabasePass", "text", title: "Password", defaultValue: "", required: true
+                input(
+                    "prefDatabaseUser",
+                    "text",
+                    title: "Username",
+                    defaultValue: "",
+                    required: true
+                )
+                input(
+                    "prefDatabasePass",
+                    "text",
+                    title: "Password",
+                    defaultValue: "",
+                    required: true
+                )
             }
             else if (prefAuthType == "token") {
-                input "prefDatabaseToken", "text", title: "Token", required: true
+                input(
+                    "prefDatabaseToken",
+                    "text",
+                    title: "Token",
+                    required: true
+                )
             }
         }
     }
@@ -359,6 +498,18 @@ void updated() {
 
     // Clear out any prior subscriptions
     unsubscribe()
+    removeAllInUseGlobalVar()
+
+    // Register use and create subscriptions for variables
+    if (prefQueueSizeVariable) {
+        logger("Queue size available in variable ${prefQueueSizeVariable}", logInfo)
+        addInUseGlobalVar(prefQueueSizeVariable)
+    }
+    variableList.each { variable ->
+        logger("Subscribing to variable ${variable}", logInfo)
+        subscribe(location, "variable:${variable}", "handleVariableEvent")
+        addInUseGlobalVar(variable)
+    }
 
     // Create device subscriptions
     Map<String,List> deviceAttrMap = getDeviceAttrMap()
@@ -471,9 +622,68 @@ void hubRestartHandler(evt) {
 }
 
 /**
+ *  encodeVariableEvent(evt)
+ *
+ *  Builds data to send to InfluxDB for variable events.
+ **/
+private String encodeVariableEvent(evt) {
+    //
+    // Variables are strongly typed, so no guessing is required.
+    //
+    // Variable types are mapped to InfluxDB types as follows:
+    //   Number    ->   Integer
+    //   Decimal   ->   Float
+    //   String    ->   String
+    //   Boolean   ->   Boolean
+    //   DateTime       <not supported>
+
+    String name = evt.name - 'variable:'
+    def variable = getGlobalVar(name)
+    String type = variable.type
+    String value
+
+    // Determine the value
+    // NB: value must be escaped here if necessary
+    switch (type) {
+        case 'integer':
+            value = "${evt.value}i"
+            break
+        case 'bigdecimal':
+            value = "${evt.value}"
+            break
+        case 'boolean':
+            value = evt.value == 'true' ? 'T' : 'F'
+            break
+        case 'string':
+            value = '"' + escapeStringForInfluxDB(evt.value) + '"'
+            break
+    }
+
+    // Set up the measurement and variable name
+    String variableName = escapeStringForInfluxDB(name)
+    String data = "${type}Variable,variableName=${variableName}"
+
+    // Add hub name (location) tag if requested
+    if (settings.includeHubInfo == null || settings.includeHubInfo) {
+        String hubName = escapeStringForInfluxDB(location.name)
+        data += ",hubName=${hubName}"
+    }
+
+    // Add the value
+    data += " value=${value}"
+
+    // Add the event timestamp
+    long eventTimestamp = evt.unixTime * 1e6 // milliseconds to nanoseconds
+    data += " ${eventTimestamp}"
+
+
+    return(data)
+}
+
+/**
  *  encodeDeviceEvent(evt)
  *
- *  Builds data to send to InfluxDB.
+ *  Builds data to send to InfluxDB for device events.
  *   - Escapes and quotes string values.
  *   - Calculates logical binary values where string values can be
  *     represented as binary values (e.g. contact: closed = 1, open = 0)
@@ -495,6 +705,9 @@ private String encodeDeviceEvent(evt) {
     //   Value:  If the value in the event (evt.value) is a valid number, the value
     //           will be InfluxDB's default numeric type (float). Othersie, the value
     //           will be escaped and inclosed in double quotes as a string.
+    //
+    //   NB: While valueBinary is actuall a true/false Boolean, it is inserted into
+    //       InfluxDB as an integer for backward compatibility reasons.
     //
     String unit = ''
     String value = ''
@@ -701,27 +914,9 @@ private String encodeDeviceEvent(evt) {
 }
 
 /**
- *  handleEvent(evt)
- *
- *  Builds data to send to InfluxDB.
- *   - Escapes and quotes string values.
- *   - Calculates logical binary values where string values can be
- *     represented as binary values (e.g. contact: closed = 1, open = 0)
- **/
-void handleEvent(evt) {
-    logger("Handle Event: ${evt}", logDebug)
-
-    // Encode the event
-    data = encodeDeviceEvent(evt)
-
-    // Add event to the queue for InfluxDB
-    queueToInfluxDb([data])
-}
-
-/**
  *  encodeHubInfo(evt)
  *
- *  Build a Hub Information record.
+ *  Build a Hub Information record to send to InfluxDB.
  **/
 private String encodeHubInfo(evt) {
     String hubName = escapeStringForInfluxDB(location.name)
@@ -738,6 +933,36 @@ private String encodeHubInfo(evt) {
 
     String data = "_hubInfo,hubName=${hubName} localIP=\"${localIP}\",firmwareVersion=\"${firmwareVersion}\",upTime=\"${upTime}\",mode=\"${mode}\",sunriseTime=\"${sunriseTime}\",sunsetTime=\"${sunsetTime}\" ${eventTimestamp}"
     return data
+}
+
+/**
+ *  handleVariableEvent(evt)
+ *
+ *  Handle variable events
+ **/
+void handleVariableEvent(evt) {
+    logger("Handle Variable Event: ${evt}", logDebug)
+
+    // Encode the event
+    data = encodeVariableEvent(evt)
+
+    // Add event to the queue for InfluxDB
+    queueToInfluxDb([data])
+}
+
+/**
+ *  handleEvent(evt)
+ *
+ *  Handle device events
+**/
+void handleEvent(evt) {
+    logger("Handle Event: ${evt}", logDebug)
+
+    // Encode the event
+    data = encodeDeviceEvent(evt)
+
+    // Add event to the queue for InfluxDB
+    queueToInfluxDb([data])
 }
 
 /**
@@ -945,6 +1170,7 @@ void handleInfluxResponse(hubResponse, closure) {
     // Migration: Transitioning from older versions will not have postCount set
     Integer postCount = state.postCount ?: 0
     state.postCount = 0
+    Integer loggerQueueSize
 
     if (hubResponse.status < 400) {
         logger("Post of ${postCount} events complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", logInfo)
@@ -960,9 +1186,15 @@ void handleInfluxResponse(hubResponse, closure) {
             app.updateSetting("prefBacklogLimit", (Long) 5000)
         }
 
-        if (state.loggerQueue.size() <= settings.prefBacklogLimit) {
-            if (state.loggerQueue.size() > postCount) {
-                logger("Backlog of ${state.loggerQueue.size()} events", logWarn)
+        loggerQueueSize = state.loggerQueue.size()
+        if (loggerQueueSize <= settings.prefBacklogLimit) {
+            if (loggerQueueSize > postCount) {
+                logger("Backlog of ${loggerQueueSize} events", logWarn)
+            }
+
+            // Update queue size variable if in use
+            if (prefQueueSizeVariable) {
+                setGlobalVar(prefQueueSizeVariable, loggerQueueSize)
             }
 
             // Try again later
@@ -970,15 +1202,50 @@ void handleInfluxResponse(hubResponse, closure) {
             return
         }
 
-        logger("Backlog of ${state.loggerQueue.size()} events exceeds limit of ${settings.prefBacklogLimit}: dropping ${postCount} events", logError)
+        logger("Backlog of ${loggerQueueSize} events exceeds limit of ${settings.prefBacklogLimit}: dropping ${postCount} events", logError)
     }
 
     // Remove the post from the queue
     state.loggerQueue = state.loggerQueue.drop(postCount)
+    loggerQueueSize = state.loggerQueue.size()
+
+    // Update queue size variable if in use
+    if (prefQueueSizeVariable) {
+        setGlobalVar(prefQueueSizeVariable, loggerQueueSize)
+    }
 
     // Go again?
-    if (state.loggerQueue.size()) {
+    if (loggerQueueSize) {
         runIn(1, writeQueuedDataToInfluxDb)
+    }
+}
+
+/**
+ *  renameVariable()
+ *
+ *  Handle renaming of hub variables
+ **/
+void renameVariable(String oldName, String newName) {
+    logger("${app.label}: variable \"${oldName}\" renamed to \"${newName}\"", logInfo)
+
+    // Check queue size variable
+    if (settings?.prefQueueSizeVariable == oldName) {
+        app.updateSetting("prefQueueSizeVariable", [type: "enum", value: newName])
+        logger("Queue size available in variable ${newName}", logInfo)
+    }
+
+    // Check list of monitored variables
+    List variableList = settings.variableList
+    Integer index = variableList.indexOf(oldName)
+    if (index >= 0) {
+        // Update application settings
+        variableList[index] = newName
+        app.updateSetting("variableList", [type: "enum", value: variableList])
+
+        // Update subscriptions
+        logger("Subscribing to variable ${newName}", logInfo)
+        subscribe(location, "variable:${newName}", "handleVariableEvent")
+        unsubscribe(location, "variable:${oldName}", "handleVariableEvent")
     }
 }
 
