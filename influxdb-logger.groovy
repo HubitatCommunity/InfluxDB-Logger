@@ -1004,7 +1004,7 @@ void softPoll() {
     variableList.each { name ->
         logger("Keep alive for variable ${name}", logDebug)
         event = encodeVariableEvent([
-            name: name,
+            name: "variable:${name}",
             value: getGlobalVar(name).value,
             unixTime: timeNow
         ])
