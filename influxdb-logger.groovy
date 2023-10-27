@@ -125,7 +125,7 @@ import groovy.transform.Field
     'peds': [ title: 'Pedometers', capability: 'stepSensor', attributes: ['steps', 'goal'] ],
     'phMeters': [ title: 'pH Meters', capability: 'pHMeasurement', attributes: ['pH'] ],
     'powerMeters': [ title: 'Power Meters', capability: 'powerMeter', attributes: ['power'] ],
-    'powerSources': [ title: 'Power Sources', capability: 'powerSources', attributes: ['powerSource'] ],
+    'powerSources': [ title: 'Power Sources', capability: 'powerSource', attributes: ['powerSource'] ],
     'presences': [ title: 'Presence Sensors', capability: 'presenceSensor', attributes: ['presence'] ],
     'pressures': [ title: 'Pressure Sensors', capability: 'pressureMeasurement', attributes: ['pressure'] ],
     'shockSensors': [ title: 'Shock Sensors', capability: 'shockSensor', attributes: ['shock'] ],
