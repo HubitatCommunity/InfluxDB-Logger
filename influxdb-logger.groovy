@@ -996,12 +996,23 @@ void softPoll() {
         app.updateSetting("prefPostHubInfo", (Boolean) (settings.prefLogHubProperties || settings.prefLogLocationProperties || settings.prefLogModeEvents))
     }
 
-    // Get the map
-    Map<String,List> deviceAttrMap = getDeviceAttrMap()
-
     // Create the list
     Long timeNow = now()
     List<String> eventList = []
+
+    // Generate variable records
+    variableList.each { name ->
+        logger("Keep alive for variable ${name}", logDebug)
+        event = encodeVariableEvent([
+            name: name,
+            value: getGlobalVar(name).value,
+            unixTime: timeNow
+        ])
+        eventList.add(event)
+    }
+
+    // Generate device records
+    Map<String,List> deviceAttrMap = getDeviceAttrMap()
     deviceAttrMap.each { device, attrList ->
         attrList.each { attr ->
             if (momentaryAttributes.contains(attr)) {
