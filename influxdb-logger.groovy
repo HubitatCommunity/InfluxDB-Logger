@@ -676,7 +676,6 @@ private String encodeVariableEvent(evt) {
     long eventTimestamp = evt.unixTime * 1e6 // milliseconds to nanoseconds
     data += " ${eventTimestamp}"
 
-
     return(data)
 }
 
