@@ -80,6 +80,7 @@
  *   2023-04-24 Denny Page      Don't send null units to InfluxDB
  *   2023-10-26 Denny Page      Add support for publishing queue length as a hub variable
  *                              Add support for publishing hub variable events (idea from Scott Chen)
+ *   2023-11-14 Denny Page      Remove default values for Influx Version and Authorization Type
  *****************************************************************************************************************/
 
 // Note: Items marked as "Migration" are intended to be kept for a period of time and then be removed circa end of 2023
@@ -394,7 +395,7 @@ def connectionPage() {
                     "1" : "v1.x",
                     "2" : "v2.x"
                 ],
-                defaultValue: "1",
+                required: true,
                 submitOnChange: true
             )
             if (prefInfluxVer == "1") {
@@ -431,7 +432,7 @@ def connectionPage() {
                     "basic" : "Username / Password",
                     "token" : "Token"
                 ],
-                defaultValue: "none",
+                required: true,
                 submitOnChange: true
             )
             if (prefAuthType == "basic") {
