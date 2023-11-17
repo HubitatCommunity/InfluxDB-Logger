@@ -81,6 +81,7 @@
  *   2023-10-26 Denny Page      Add support for publishing queue length as a hub variable
  *                              Add support for publishing hub variable events (idea from Scott Chen)
  *   2023-11-14 Denny Page      Remove default values for Influx Version and Authorization Type
+ *   2023-11-17 Denny Page      Add warning about special characters in Database, Org and Bucket names
  *****************************************************************************************************************/
 
 // Note: Items marked as "Migration" are intended to be kept for a period of time and then be removed circa end of 2023
@@ -406,6 +407,7 @@ def connectionPage() {
                     defaultValue: "Hubitat",
                     required: true
                 )
+                paragraph "Do not use special characters (including spaces) in Database Names"
             }
             else if (prefInfluxVer == "2") {
                 input(
@@ -422,6 +424,7 @@ def connectionPage() {
                     defaultValue: "",
                     required: true
                 )
+                paragraph "Do not use special characters (including spaces) in Org or Bucket Names"
             }
             input(
                 name: "prefAuthType",
