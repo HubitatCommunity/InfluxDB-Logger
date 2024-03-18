@@ -82,9 +82,9 @@
  *                              Add support for publishing hub variable events (idea from Scott Chen)
  *   2023-11-14 Denny Page      Remove default values for Influx Version and Authorization Type
  *   2023-11-17 Denny Page      Add warning about special characters in Database, Org and Bucket names
+ *   2024-03-17 Denny Page      Add failsafe call to writeQueuedDataToInfluxDb when new events are queued
+ *                              Remove old migration items
  *****************************************************************************************************************/
-
-// Note: Items marked as "Migration" are intended to be kept for a period of time and then be removed circa end of 2023
 
 definition(
     name: "InfluxDB Logger",
@@ -474,6 +474,7 @@ def connectionPage() {
 void installed() {
     state.installedAt = now()
     state.loggerQueue = []
+    state.postCount = 0
     updated()
     log.info "${app.label}: Installed"
 }
@@ -564,19 +565,6 @@ void updated() {
 
     // Flush any pending batch
     runIn(1, writeQueuedDataToInfluxDb)
-
-    // Migration: Clean up old state variables
-    state.remove("deviceAttributes")
-    state.remove("deviceList")
-    state.remove("loggingLevelIDE")
-    state.remove("options")
-    state.remove("postExpire")
-    state.remove("queuedData")
-    state.remove("selectedAttr")
-    state.remove("writeInterval")
-    app.removeSetting("prefLogHubProperties")
-    app.removeSetting("prefLogLocationProperties")
-    app.removeSetting("prefLogModeEvents")
 }
 
 /**
@@ -620,7 +608,7 @@ void hubRestartHandler(evt) {
         handleModeEvent(null)
     }
 
-    if (state.loggerQueue?.size()) {
+    if (state.loggerQueue.size()) {
         runIn(60, writeQueuedDataToInfluxDb)
     }
 }
@@ -994,11 +982,6 @@ void handleModeEvent(evt) {
 void softPoll() {
     logger("Keepalive check", logDebug)
 
-    // Migration: Old configurations will not have prefPostHubInfo set
-    if (settings.prefPostHubInfo == null) {
-        app.updateSetting("prefPostHubInfo", (Boolean) (settings.prefLogHubProperties || settings.prefLogLocationProperties || settings.prefLogModeEvents))
-    }
-
     // Create the list
     Long timeNow = now()
     List<String> eventList = []
@@ -1062,11 +1045,6 @@ void softPoll() {
  *  Adds events to the InfluxDB queue.
  **/
 private void queueToInfluxDb(List<String> eventList) {
-    if (state.loggerQueue == null) {
-        // Failsafe if coming from an old version
-        state.loggerQueue = []
-    }
-
     // Add the data to the queue
     priorLoggerQueueSize = state.loggerQueue.size()
     state.loggerQueue += eventList
@@ -1077,11 +1055,11 @@ private void queueToInfluxDb(List<String> eventList) {
     // If this is the first data in the batch, trigger the timer
     if (priorLoggerQueueSize == 0) {
         logger("Scheduling batch", logDebug)
-        // Migration: prefBatchTimeLimit does not exist in older configurations
-        if (settings.prefBatchTimeLimit == null) {
-            app.updateSetting("prefBatchTimeLimit", (Long) 60)
-        }
         runIn(settings.prefBatchTimeLimit, writeQueuedDataToInfluxDb)
+    }
+    else if (priorLoggerQueueSize > settings.prefBacklogLimit + settings.prefBatchSizeLimit) {
+        // Failsafe in case writeQueuedDataToInfluxDb timer chain has been broken
+        writeQueuedDataToInfluxDb()
     }
 }
 
@@ -1093,31 +1071,13 @@ private void queueToInfluxDb(List<String> eventList) {
  *  NB: Function name writeQueuedDataToInfluxDb must be kept for backward compatibility
 **/
 void writeQueuedDataToInfluxDb() {
-    if (state.loggerQueue == null) {
-        // Failsafe if coming from an old version
-        return
-    }
-    if (state.uri == null) {
-        // Failsafe if using an old config
-        setupDB()
-    }
-
     Integer loggerQueueSize = state.loggerQueue.size()
     logger("Number of events queued for InfluxDB: ${loggerQueueSize}", logDebug)
     if (loggerQueueSize == 0) {
         return
     }
 
-    // Migration: Old configurations will not have prefBacklogLimit or prefBatchSizeLimit set
-    if (settings.prefBacklogLimit == null) {
-        app.updateSetting("prefBacklogLimit", (Long) 5000)
-    }
-    if (settings.prefBatchSizeLimit == null) {
-        app.updateSetting("prefBatchSizeLimit", (Long) 50)
-    }
-
-    // Migration: Transitioning from older versions will not have state.postCount set
-    Integer postCount = state.postCount ?: 0
+    Integer postCount = state.postCount
     Long timeNow = now()
     if (postCount) {
         // A post is already running
@@ -1174,17 +1134,12 @@ void writeQueuedDataToInfluxDb() {
  *  NB: Function name handleInfluxResponse must be kept for backward compatibility
  **/
 void handleInfluxResponse(hubResponse, closure) {
-    if (state.loggerQueue == null) {
-        // Failsafe if coming from an old version
-        return
-    }
-
-    // Migration: Transitioning from older versions will not have closure set
     Double elapsed = (closure) ? (now() - closure.postTime) / 1000 : 0
-    // Migration: Transitioning from older versions will not have postCount set
-    Integer postCount = state.postCount ?: 0
-    state.postCount = 0
+    Integer postCount = state.postCount
     Integer loggerQueueSize
+
+    // Clear the prior post count
+    state.postCount = 0
 
     if (hubResponse.status < 400) {
         logger("Post of ${postCount} events complete - elapsed time ${elapsed} seconds - Status: ${hubResponse.status}", logInfo)
@@ -1195,24 +1150,20 @@ void handleInfluxResponse(hubResponse, closure) {
             logger("Failed record was: ${state.loggerQueue[0]}", logError)
         }
 
-        // Migration: Old configurations will not have prefBacklogLimit set
-        if (settings.prefBacklogLimit == null) {
-            app.updateSetting("prefBacklogLimit", (Long) 5000)
-        }
-
         loggerQueueSize = state.loggerQueue.size()
         if (loggerQueueSize <= settings.prefBacklogLimit) {
             if (loggerQueueSize > postCount) {
                 logger("Backlog of ${loggerQueueSize} events", logWarn)
             }
 
+            // Try again later
+            runIn(60, writeQueuedDataToInfluxDb)
+
             // Update queue size variable if in use
+            // NB: This is done after reschedule in case the variable update fails
             if (prefQueueSizeVariable) {
                 setGlobalVar(prefQueueSizeVariable, loggerQueueSize)
             }
-
-            // Try again later
-            runIn(60, writeQueuedDataToInfluxDb)
             return
         }
 
@@ -1223,14 +1174,15 @@ void handleInfluxResponse(hubResponse, closure) {
     state.loggerQueue = state.loggerQueue.drop(postCount)
     loggerQueueSize = state.loggerQueue.size()
 
-    // Update queue size variable if in use
-    if (prefQueueSizeVariable) {
-        setGlobalVar(prefQueueSizeVariable, loggerQueueSize)
-    }
-
     // Go again?
     if (loggerQueueSize) {
         runIn(1, writeQueuedDataToInfluxDb)
+    }
+
+    // Update queue size variable if in use
+    // NB: This is done after reschedule in case the variable update fails
+    if (prefQueueSizeVariable) {
+        setGlobalVar(prefQueueSizeVariable, loggerQueueSize)
     }
 }
 
@@ -1315,14 +1267,6 @@ private void setupDB() {
     state.headers = headers
 
     logger("InfluxDB URI: ${state.uri}", logInfo)
-
-    // Migration: Clean up old state vars if present
-    state.remove("databaseHost")
-    state.remove("databasePort")
-    state.remove("databaseName")
-    state.remove("databasePass")
-    state.remove("databaseUser")
-    state.remove("path")
 }
 
 /**
