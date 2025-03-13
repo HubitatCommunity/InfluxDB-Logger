@@ -84,6 +84,7 @@
  *   2023-11-17 Denny Page      Add warning about special characters in Database, Org and Bucket names
  *   2024-03-17 Denny Page      Add failsafe call to writeQueuedDataToInfluxDb when new events are queued
  *                              Remove old migration items
+ *   2025-03-13 Denny Page      When debugging, log individual fields of device and variable events
  *****************************************************************************************************************/
 
 definition(
@@ -932,7 +933,7 @@ private String encodeHubInfo(evt) {
  *  Handle variable events
  **/
 void handleVariableEvent(evt) {
-    logger("Handle Variable Event: ${evt}", logDebug)
+    logger("Handle Variable Event: ${evt.name}, ${evt.value}", logDebug)
 
     // Encode the event
     data = encodeVariableEvent(evt)
@@ -947,7 +948,7 @@ void handleVariableEvent(evt) {
  *  Handle device events
 **/
 void handleEvent(evt) {
-    logger("Handle Event: ${evt}", logDebug)
+    logger("Handle Event: ${evt.displayName}, ${evt.name}, ${evt.unit}, ${evt.value}", logDebug)
 
     // Encode the event
     data = encodeDeviceEvent(evt)
