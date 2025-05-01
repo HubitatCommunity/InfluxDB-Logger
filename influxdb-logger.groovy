@@ -85,6 +85,7 @@
  *   2024-03-17 Denny Page      Add failsafe call to writeQueuedDataToInfluxDb when new events are queued
  *                              Remove old migration items
  *   2025-03-13 Denny Page      When debugging, log individual fields of device and variable events
+ *   2025-04-30 Denny Page      Clarify InfluxDB Version as referring to Write Protocol Version
  *****************************************************************************************************************/
 
 definition(
@@ -391,11 +392,11 @@ def connectionPage() {
             )
             input(
                 name: "prefInfluxVer",
-                title: "Influx Version",
+                title: "Influx Write Protocol Version",
                 type: "enum",
                 options: [
-                    "1" : "v1.x",
-                    "2" : "v2.x"
+                    "1" : "v1",
+                    "2" : "v2/v3"
                 ],
                 required: true,
                 submitOnChange: true
